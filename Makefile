@@ -16,6 +16,7 @@ OMP_INC=
 OMP_LIB=
 MPI_LIB=
 MPI_INC=
+OPTIMIZATION := -O1
 
 SRC=src/
 TESTDIR=test/
@@ -48,7 +49,7 @@ ifeq ($(UNAME_S),Linux)
 		ifeq ($(VEC),yes)
 			CXXFLAGS_VECTOR  = -O3 -qopenmp -g -Wall -Wextra -std=c++11 -Wno-unused-parameter -qopt-report=5 -qopt-report-phase=vec $(DEBUG_FLAGS)
 		else
-			CXXFLAGS  = -O3 -qopenmp -g -Wall -Wextra -std=c99 -Wno-unused-parameter -qopt-report=2 $(DEBUG_FLAGS)
+			CXXFLAGS  = $(OPTIMIZATION) -qopenmp -g -Wall -Wextra -std=c99 -Wno-unused-parameter -qopt-report=2 $(DEBUG_FLAGS)
 		endif
 		#	include directories
 		# library directories
@@ -63,7 +64,7 @@ ifeq ($(UNAME_S),Linux)
 		# GPU NVidia compiler
 		CXX = nvcc
 		LD  = nvcc
-		CXXFLAGS = -O3 -DD_GPU -arch=sm_30
+		CXXFLAGS = $(OPTIMIZATION) -DD_GPU -arch=sm_30
 		ifeq ($(DEBUG),yes)
 			CXXFLAGS += -ggdb3
 		endif
@@ -71,10 +72,10 @@ ifeq ($(UNAME_S),Linux)
 	ifeq ($(COMPILER),gcc)
 		# GCC
 		CXX=gcc
-		# OPT: CXXFLAGS= -O3 -std=c99 -g -fopenmp $(INCLUDES) $(DEBUG_FLAGS)
+		# OPT: CXXFLAGS= $(OPTIMIZATION) -std=c99 -g -fopenmp $(INCLUDES) $(DEBUG_FLAGS)
 		# NOOPT CXXFLAGS= -std=c99 -g -fopenmp $(INCLUDES) $(DEBUG_FLAGS)
 		OMP_FLAGS=-fopenmp $(OMP_EXTRA)
-		CXXFLAGS= -O1 -std=c99 -g $(DEBUG_FLAGS)
+		CXXFLAGS=$(OPTIMIZATION) -std=c99 -g $(DEBUG_FLAGS)
 	endif
 endif
 ifeq ($(UNAME_S),Darwin)
@@ -83,7 +84,7 @@ ifeq ($(UNAME_S),Darwin)
 	MPI_INC=-I /opt/openmpi/include
 	INCLUDES=
 	OMP_FLAGS= -fopenmp
-	CXXFLAGS= -O3 -std=c99 -g $(OMP_FLAGS)
+	CXXFLAGS= $(OPTIMIZATION) -std=c99 -g $(OMP_FLAGS)
 	MPI_LIBS=/opt/openmpi/lib
 endif
 #CXXFLAGS= -O3 -std=c++11 -mavx -pg -qopenmp -qopt-report5 $(INCLUDES)
@@ -91,8 +92,8 @@ endif
 PROGS=$(BIN)kmeans
 
 .PHONY: all
-all: $(BIN) kmeans_mpi1
-#all: $(BIN) kmeans_simple kmeans_omp1 kmeans_omp2
+all: $(BIN) kmeans_mpi1 kmeans_simple
+#kmeans_omp1 kmeans_omp2
 
 kmeans_simple:
 	$(CXX) $(CXXFLAGS) -o $(BIN)kmeans_simple $(SRC)kmeans.c $(SRC)csvhelper.c \
@@ -108,7 +109,7 @@ kmeans_omp2:
  						  $(SRC)kmeans_omp1_impl.c $(SRC)csvhelper.c $(HEADERS) $(LIBS)
 
 kmeans_mpi1:
-	$(MPICC) $(CXXFLAGS) -o $(BIN)kmeans_mpi1 $(SRC)kmeans_mpi_main.c \
+	$(MPICC) $(CXXFLAGS) -o $(BIN)kmeans_mpi1 $(SRC)kmeans.c \
 						  $(SRC)kmeans_config.c $(SRC)kmeans_support.c \
  						  $(SRC)kmeans_mpi1_impl.c $(SRC)csvhelper.c \
  						  $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
