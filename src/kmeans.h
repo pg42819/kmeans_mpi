@@ -16,6 +16,16 @@ struct point {
     int cluster;
 };
 
+// rather than having a struct for single point, we use a
+// struct for the whole dataset - making it easier to break int
+// simple arrays of ints and doubles for marshalling/unmarshalling (over MPI)
+struct pointset {
+    int num_points;
+    double *x_coords;
+    double *y_coords;
+    int *cluster_ids;
+};
+
 struct kmeans_config {
     int max_points;
     int num_clusters;

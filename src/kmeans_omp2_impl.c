@@ -23,10 +23,12 @@
  * @param num_clusters number of clusters - hence size of the centroids array
  * @return the number of points for which the cluster assignment was changed
  */
-int assign_clusters(struct point* dataset, int num_points, struct point *centroids, int num_clusters)
+int assign_clusters(struct pointset* dataset, struct pointset *centroids)
 {
     DEBUG("\nStarting assignment phase:\n");
     int cluster_changes = 0;
+    int num_points = dataset->num_points;
+    int num_clusters = centroids->num_points;
     // use reduction + for cluster changes which are added up
 #pragma omp parallel for schedule(runtime) reduction(+:cluster_changes)
     for (int n = 0; n < num_points; ++n) {
@@ -42,18 +44,19 @@ int assign_clusters(struct point* dataset, int num_points, struct point *centroi
 #pragma omp parallel for schedule(runtime) shared(n)
         for (int k = 0; k < num_clusters; ++k) {
             // calc the distance passing pointers to points since the distance does not modify them
-            double distance_from_centroid = euclidean_distance(&dataset[n], &centroids[k]);
+            double distance_from_centroid = point_distance(dataset, n, centroids, k);
             if (distance_from_centroid < min_distance) {
                 min_distance = distance_from_centroid;
                 closest_cluster = k;
             }
         }
         // if the point was not already in the closest cluster, move it there and count changes
-        if (dataset[n].cluster != closest_cluster) {
-            dataset[n].cluster = closest_cluster;
+
+        if (dataset->cluster_ids[n] != closest_cluster) {
+            dataset->cluster_ids[n] = closest_cluster;
             cluster_changes++;
             if (log_config->verbose) {
-                debug_assignment(&dataset[n], closest_cluster, &centroids[closest_cluster], min_distance);
+                debug_assignment(dataset, n, centroids, closest_cluster, min_distance);
             }
         }
     }
@@ -64,16 +67,13 @@ int assign_clusters(struct point* dataset, int num_points, struct point *centroi
  * Calculates new centroids for the clusters of the given dataset by finding the
  * mean x and y coordinates of the current members of the cluster for each cluster.
  *
- * The centroids are set in the array passed in, which is expected to be pre-allocated
- * and contain the previous centroids: these are overwritten by the new values.
- *
- * @param dataset set of all points with current cluster assigments
- * @param num_points number of points in the dataset
+ * @param dataset set of all points with current cluster assignments
  * @param centroids array to hold the centroids - already allocated
- * @param num_clusters number of clusters - hence size of the centroids array
  */
-void calculate_centroids(struct point* dataset, int num_points, struct point *centroids, int num_clusters)
+void calculate_centroids(struct pointset* dataset, struct pointset *centroids)
 {
+    int num_points = dataset->num_points;
+    int num_clusters = centroids->num_points;
     double sum_of_x_per_cluster[num_clusters];
     double sum_of_y_per_cluster[num_clusters];
     int num_points_in_cluster[num_clusters];
@@ -93,11 +93,9 @@ void calculate_centroids(struct point* dataset, int num_points, struct point *ce
     // the x coords of clusters to which each belongs
 #pragma omp for schedule(runtime)
     for (int n = 0; n < num_points; ++n) {
-        // use pointer to struct to avoid creating unnecessary copy in memory
-        struct point *p = &dataset[n];
-        int k = p->cluster;
-        sum_of_x_per_cluster[k] += p->x;
-        sum_of_y_per_cluster[k] += p->y;
+        int k = dataset->cluster_ids[n];
+        sum_of_x_per_cluster[k] += dataset->x_coords[n];
+        sum_of_y_per_cluster[k] += dataset->y_coords[n];
         // count the points in the cluster to get a mean later
         num_points_in_cluster[k]++;
     }
@@ -105,11 +103,10 @@ void calculate_centroids(struct point* dataset, int num_points, struct point *ce
     // the new centroids are at the mean x and y coords of the clusters
 #pragma omp for schedule(runtime)
     for (int k = 0; k < num_clusters; ++k) {
-        struct point new_centroid;
         // mean x, mean y => new centroid
-        new_centroid.x = sum_of_x_per_cluster[k] / num_points_in_cluster[k];
-        new_centroid.y = sum_of_y_per_cluster[k] / num_points_in_cluster[k];
-        centroids[k] = new_centroid;
+        double new_centroid_x = sum_of_x_per_cluster[k] / num_points_in_cluster[k];
+        double new_centroid_y = sum_of_y_per_cluster[k] / num_points_in_cluster[k];
+        set_point(centroids, k, new_centroid_x, new_centroid_y, IGNORE_CLUSTER_ID);
     }
 }
 }

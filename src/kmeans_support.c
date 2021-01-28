@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <getopt.h>
 #include <unistd.h>
 #include "csvhelper.h"
 #include "kmeans.h"
@@ -9,6 +8,148 @@
 #include "log.h"
 #include <math.h>
 #include <omp.h>
+
+
+/**
+ * Allocate memory for a new point set of size.
+ * IMPORTANT: caller responsible for freeing the pointset later
+ * @param num_points size of the pointset to create
+ * @return a pointer to a newly allocated pointset
+ */
+struct pointset *allocate_pointset(int num_points)
+{
+    struct pointset *new_pointset = (struct pointset *)malloc(sizeof(struct pointset));
+    if (new_pointset == NULL) {
+        FAIL("Failed to allocate a new pointset");
+    }
+
+    new_pointset->x_coords = (double *)malloc(num_points * sizeof(double));
+    new_pointset->y_coords = (double *)malloc(num_points * sizeof(double));
+    new_pointset->cluster_ids = (int *)malloc(num_points * sizeof(int));
+
+    if (new_pointset->x_coords == NULL || new_pointset->y_coords == NULL || new_pointset->cluster_ids == NULL) {
+        FAIL("Failed to allocate coordinates for a pointset of size %d", num_points);
+    }
+    new_pointset->num_points = num_points;
+    return new_pointset;
+}
+
+/**
+ * Fail and exit if the index is outside the bounds of the pointset or the pointset is null
+ * Note pointsets start at 0, so if index == pointset.num_points that counts as failure
+ *
+ * @param pointset pointset to check
+ * @param index index to check
+ */
+void check_bounds(struct pointset *pointset, int index)
+{
+    if (pointset == NULL) {
+        FAIL("Attempted to reference a NULL pointset");
+    }
+    if (index >= pointset->num_points) {
+        FAIL("Attempted to reference a point outsize the pre-allocated size for the pointset: %d", index);
+    }
+}
+
+/**
+ * Assign a cluster to a point in a pointset
+ * @param pointset to set in
+ * @param index index of point to set
+ * @param cluster_id cluster to set: use IGNORE_CLUSTER_ID (-2)to set the cluster_id but leave it as is
+ */
+void set_cluster(struct pointset *pointset, int index, int cluster_id)
+{
+    check_bounds(pointset, index);
+    if (cluster_id != IGNORE_CLUSTER_ID) {
+        // set cluster id too
+        pointset->cluster_ids[index] = cluster_id;
+    }
+}
+
+/**
+ * Set a point in a pointset
+ * @param pointset to set in
+ * @param index index of point to set
+ * @param x x coordinate to set
+ * @param y y coordinate to set
+ * @param cluster_id cluster to set: use IGNORE_CLUSTER_ID (-2)to set the cluster_id but leave it as is
+ */
+void set_point(struct pointset *pointset, int index, double x, double y, int cluster_id)
+{
+    check_bounds(pointset, index);
+    pointset->x_coords[index] = x;
+    pointset->y_coords[index] = y;
+    set_cluster(pointset, index, cluster_id);
+}
+
+/**
+ * Copy a point from one point set to another
+ * @param source set to copy from
+ * @param target set to copy to
+ * @param index index of point to copy
+ * @param include_cluster true to copy the cluster Id too
+ */
+void copy_point(struct pointset *source, struct pointset *target, int index, bool include_cluster)
+{
+    check_bounds(source, index);
+    int cluster_id = include_cluster ? source->cluster_ids[index] : IGNORE_CLUSTER_ID;
+    set_point(target, index, source->x_coords[index], source->y_coords[index], cluster_id);
+}
+
+/**
+ * Copy a subset of points from one point set to another
+ * @param source set to copy from
+ * @param target set to copy to
+ * @param start_index index of the first point to copy
+ * @param size the number of points to copy
+ * @param include_cluster true to copy the cluster Ids too
+ */
+void copy_points(struct pointset *source, struct pointset *target, int start_index, int size, bool include_cluster)
+{
+    check_bounds(source, start_index + size - 1);
+    check_bounds(target, start_index + size - 1);
+    for (int i = 0; i < size; ++i) {
+        copy_point(source, target, start_index + i, include_cluster);
+    }
+}
+
+/**
+ * Returns true if the coordinates at the index of both points are equal
+ */
+bool same_point(struct pointset *pointset1, struct pointset *pointset2, int index)
+{
+    check_bounds(pointset1, index);
+    check_bounds(pointset2, index);
+    return (pointset1->x_coords[index] == pointset2->x_coords[index] &&
+            pointset1->y_coords[index] == pointset2->y_coords[index]);
+}
+
+/**
+ * Returns the eclidean distance between the points in the pointsets at the given index
+ */
+double point_distance(struct pointset *pointset1, int index1, struct pointset *pointset2, int index2)
+{
+    check_bounds(pointset1, index1);
+    check_bounds(pointset2, index2);
+//    double x2 = pointset2->x_coords[index2];
+//    double y2 = pointset2->y_coords[index2];
+//    double x1 = pointset1->x_coords[index1];
+//    double y1 = pointset1->y_coords[index1];
+//    double dist = euclidean_distance(x2, y2, x1, y1);
+//    return dist;
+    return euclidean_distance(pointset2->x_coords[index2], pointset2->y_coords[index2],
+                              pointset1->x_coords[index1], pointset1->y_coords[index1]);
+}
+
+/**
+ * Returns true if the cluster_ids at the index of both points are equal
+ */
+bool same_cluster(struct pointset *pointset1, struct pointset *pointset2, int index)
+{
+    check_bounds(pointset1, index);
+    check_bounds(pointset2, index);
+    return (pointset1->cluster_ids[index] == pointset2->cluster_ids[index]);
+}
 
 /**
  * Convert the omp schedule kind to an int for easy graphing and
@@ -53,11 +194,12 @@ int omp_schedule_kind(int *chunk_size)
 /**
  * Print debug information for the assignment of a point to a cluster
  */
-void debug_assignment(struct point *p, int closest_cluster, struct point *centroid, double min_distance)
+void debug_assignment(struct pointset *dataset, int dataset_index,
+                      struct pointset *centroids, int centroid_index, double min_distance)
 {
     if (log_config->verbose) {
         printf("Assigning (%s) to cluster %d with centroid (%s) d = %f\n",
-               p_to_s(p), closest_cluster, p_to_s(centroid), min_distance);
+               p_to_s(dataset, dataset_index),  centroid_index, p_to_s(centroids, centroid_index), min_distance);
     }
 }
 
@@ -80,21 +222,17 @@ void omp_debug(char *msg) {
  *
  * The points are expected as pointers since the method does not change them and memory and time is
  * saved by not copying the structs unnecessarily.
- *
- * @param p1 pointer to first point in 2 dimensions
- * @param p2 ponter to second point in 2 dimensions
- * @return geometric distance between the 2 points
  */
-double euclidean_distance(struct point *p1, struct point *p2)
+double euclidean_distance(double x2, double y2, double x1, double y1)
 {
-    double square_diff_x = (p2->x - p1->x) * (p2->x - p1->x);
-    double square_diff_y = (p2->y - p1->y) * (p2->y - p1->y);
+    double square_diff_x = (x2 - x1) * (x2 - x1);
+    double square_diff_y = (y2 - y1) * (y2 - y1);
     double square_dist = square_diff_x + square_diff_y;
     // most k-means algorithms would stop here and return the square of the euclidean distance
     // because its faster, and we only need comparative values for clustering
     // Here we have the option of doing it either way - defaulting to the performant no-sqrt
     double dist = kmeans_config->proper_distance ? sqrt(square_dist) : square_dist;
-    VERBOSE("Distance from (%s) -> (%s) = %f\n", p_to_s(p1), p_to_s(p2), dist);
+    DEBUG("Distance from (%.7f,%.7f) -> (%.7f,%.7f) = %f", x2, y2, x1, y1, dist);
     return dist;
 }
 
@@ -104,12 +242,12 @@ double euclidean_distance(struct point *p1, struct point *p2)
  * @param p point to print to string
  * @return allocated string holding point
  */
-const char *p_to_s(struct point *p)
+const char *p_to_s(struct pointset *dataset, int index)
 {
     // TODO this eats a lot of memory when in a big loop - consider passing in a string to reuse
-    // but for now we keep string printing out of timed sections so it won't have much affect
+    // but for now we keep string printing OUT of timed sections so it won't have much affect
     char *result = malloc(50 * sizeof(char)); // big enough for 2 points
-    sprintf(result, "%.7f,%.7f", p->x, p->y);
+    sprintf(result, "%.7f,%.7f", dataset->x_coords[index], dataset->y_coords[index]);
     return result;
 }
 
@@ -120,9 +258,9 @@ const char *p_to_s(struct point *p)
  * @param dataset array of points
  * @param num_points size of the array
  */
-void print_points(FILE *out, struct point *dataset, int num_points) {
-    for (int i = 0; i < num_points; ++i) {
-        fprintf(out, "%s,cluster_%d\n", p_to_s(&dataset[i]), dataset[i].cluster);
+void print_points(FILE *out, struct pointset *dataset) {
+    for (int i = 0; i < dataset->num_points; ++i) {
+        fprintf(out, "%s,cluster_%d\n", p_to_s(dataset, i), dataset->cluster_ids[i]);
     }
 }
 
@@ -133,9 +271,9 @@ void print_points(FILE *out, struct point *dataset, int num_points) {
  * @param centroids array of centroid points
  * @param num_points number of centroids == number of clusters
  */
-void print_centroids(FILE *out, struct point *centroids, int num_points) {
-    for (int i = 0; i < num_points; ++i) {
-        fprintf(out, "centroid[%d] is at %s\n", i, p_to_s(&centroids[i]));
+void print_centroids(FILE *out, struct pointset *centroids) {
+    for (int i = 0; i < centroids->num_points; ++i) {
+        fprintf(out, "centroid[%d] is at %s\n", i, p_to_s(centroids, i));
     }
 }
 
@@ -198,14 +336,14 @@ void print_metrics(FILE *out, struct kmeans_metrics *metrics)
  * Read 2-dimensional points from the CSV file with headers.
  *
  * @param csv_file file pointer to the input file
- * @param dataset pre-allocated array of points into which to read the file
+ * @param dataset pre-allocated dataset into which to read the file
  * @param max_points max number of points to read
  * @param headers if not null, pre-allocated string array to hold the headers
  * @param dimensions number of headers
  *
  * @return number of actual points read from the file
  */
-int read_csv(FILE* csv_file, struct point *dataset, int max_points, char *headers[], int *dimensions)
+int read_csv(FILE* csv_file, struct pointset *dataset, int max_points, char *headers[], int *dimensions)
 {
     char *line;
     *dimensions = csvheaders(csv_file, headers);
@@ -223,25 +361,25 @@ int read_csv(FILE* csv_file, struct point *dataset, int max_points, char *header
             break;
         }
         else {
-            struct point new_point;
-            new_point.cluster = -1; // -1 => no cluster yet assigned
+            check_bounds(dataset, count);
             char *x_string = csvfield(0);
             char *y_string = csvfield(1);
-            new_point.x = strtod(x_string, NULL);
-            new_point.y = strtod(y_string, NULL);
+            set_point(dataset, count, strtod(x_string, NULL), strtod(y_string, NULL), NO_CLUSTER_ID);
 
             if (num_fields > 2 && *dimensions > 2) {
                 char *cluster_string = csvfield(2);
                 int cluster;
                 char prefix[200];
                 sscanf(cluster_string,"%[^0-9]%d", prefix, &cluster);
-                new_point.cluster = cluster;
+                dataset->cluster_ids[count] = cluster;
             }
-            dataset[count] = new_point;
             count++;
         }
     }
     fclose(csv_file);
+
+    // update the dataset length to match the count
+    dataset->num_points = count;
     return count;
 }
 
@@ -253,12 +391,12 @@ int read_csv(FILE* csv_file, struct point *dataset, int max_points, char *header
  * IF the file exists it is silently overwritten.
  *
  * @param csv_file_name absolute path to the file to be written
- * @param dataset array of all points with cluster information
+ * @param dataset pointset of all points with cluster information
  * @param num_points size of the array of points
  * @param headers optional headers to put at the top of the file
  * @param dimensions number of headers
 */
-int read_csv_file(char* csv_file_name, struct point *dataset, int max_points, char *headers[], int *dimensions)
+int read_csv_file(char* csv_file_name, struct pointset *dataset, int max_points, char *headers[], int *dimensions)
 {
     FILE *csv_file = fopen(csv_file_name, "r");
     if (!csv_file) {
@@ -269,7 +407,7 @@ int read_csv_file(char* csv_file_name, struct point *dataset, int max_points, ch
 }
 
 /**
- * Write a Comma-Separated-Values file with points and cluster assignments to a file pointer.
+ * Write a Comma-Separated-Values file with points and cluster assignments to a pointset.
  *
  * @param csv_file pointer to the file to write to
  * @param dataset array of all points with cluster information
@@ -277,23 +415,22 @@ int read_csv_file(char* csv_file_name, struct point *dataset, int max_points, ch
  * @param headers optional headers to put at the top of the file
  * @param dimensions number of headers
  */
-void write_csv(FILE *csv_file, struct point *dataset, int num_points, char *headers[], int dimensions)
+void write_csv(FILE *csv_file, struct pointset *dataset, char *headers[], int dimensions)
 {
     if (headers != NULL) {
         print_headers(csv_file, headers, dimensions);
     }
 
-    print_points(csv_file, dataset, num_points);
+    print_points(csv_file, dataset);
 }
 
-void write_csv_file(char *csv_file_name, struct point *dataset, int num_points, char *headers[], int dimensions) {
+void write_csv_file(char *csv_file_name, struct pointset *dataset, char *headers[], int dimensions) {
     FILE *csv_file = fopen(csv_file_name, "w");
     if (!csv_file) {
-        fprintf(stderr, "Error: cannot write to the output file at %s\n", csv_file_name);
-        exit(1);
+        FAIL("Cannot write to the output file at %s\n", csv_file_name);
     }
 
-    write_csv(csv_file, dataset, num_points, headers, dimensions);
+    write_csv(csv_file, dataset, headers, dimensions);
 }
 
 void write_metrics_file(char *metrics_file_name, struct kmeans_metrics *metrics) {
@@ -330,10 +467,11 @@ void write_metrics_file(char *metrics_file_name, struct kmeans_metrics *metrics)
  * @param num_points
  * @return 1 or -1 if the files match
  */
-int test_results(char *test_file_name, struct point *dataset, int num_points)
+int test_results(char *test_file_name, struct pointset *dataset)
 {
     int result = 1;
-    struct point *testset = malloc((num_points + 10) * sizeof(struct point));
+    int num_points = dataset->num_points;
+    struct pointset *testset = allocate_pointset(num_points + 10);
     int test_dimensions;
     static char* test_headers[3];
     int num_test_points = read_csv_file(test_file_name, testset, num_points, test_headers, &test_dimensions);
@@ -346,14 +484,12 @@ int test_results(char *test_file_name, struct point *dataset, int num_points)
     }
     else {
         for (int n = 0; n < num_points; ++n) {
-            struct point *p = &dataset[n];
-            struct point *test_p = &testset[n];
-            if (test_p->x == p->x && test_p->y == p->y) {
-                if (test_p->cluster != p->cluster) {
+            if (same_point(testset, dataset, n)) {
+                if (!same_cluster(testset, dataset, n)) {
                     // points match but assigned to different clusters
                     if (!log_config->silent) {
                         fprintf(stderr, "Test failure at %d: (%s) result cluster: %d does not match test: %d\n",
-                                n + 1, p_to_s(p), p->cluster, test_p->cluster);
+                                n + 1, p_to_s(dataset, n), dataset->cluster_ids[n], testset->cluster_ids[n]);
                     }
                     result = -1;
                     break; // give up comparing
@@ -369,8 +505,8 @@ int test_results(char *test_file_name, struct point *dataset, int num_points)
             else {
                 // points themselves are different
                 if (!log_config->silent) {
-                fprintf(stderr, "Test failure at %d: %s does not match test point: %s\n",
-                        n+1, p_to_s(p), p_to_s(test_p));
+                    fprintf(stderr, "Test failure at %d: %s does not match test point: %s\n",
+                            n+1, p_to_s(dataset, n), p_to_s(testset, n));
 
                 }
                 result = -1;

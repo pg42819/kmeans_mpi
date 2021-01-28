@@ -30,4 +30,8 @@ struct log_config {
 #define ERROR(...) ERROR__INT(__VA_ARGS__, "\n")
 //#define ERROR(...) (void)0
 
+#define FAIL__INT(fmt, ...) fprintf(stderr, "FATAL ERROR: " fmt "%s", __VA_ARGS__); exit(1);
+#define FAIL(...) FAIL__INT(__VA_ARGS__, "\n")
+//#define ERROR(...) (void)0
+
 #endif
