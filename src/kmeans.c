@@ -33,13 +33,19 @@ struct log_config *log_config;
  * @param centroids uninitialized array of centroids to be filled
  * @param num_clusters the number of clusters (K) for which centroids are created
  */
-void initialize_centroids(struct pointset* dataset, struct pointset *centroids, int num_clusters)
+void initialize_centroids(struct pointset* dataset, struct pointset *centroids)
 {
     if (dataset->num_points < centroids->num_points) {
         FAIL("There cannot be fewer points than clusters");
     }
 
-    copy_points(dataset, centroids, 0, num_clusters, false);
+    copy_points(dataset, centroids, 0, centroids->num_points, false);
+}
+
+int load_dataset(struct pointset *dataset) {
+    char *csv_file_name = valid_file('f', kmeans_config->in_file);
+    int num_points = read_csv_file(csv_file_name, dataset, kmeans_config->max_points, headers, &dimensions);
+    return num_points;
 }
 
 /**
@@ -55,126 +61,50 @@ void initialize_centroids(struct pointset* dataset, struct pointset *centroids, 
  */
 extern int assign_clusters(struct pointset* dataset, struct pointset *centroids);
 
+// TODO move initialisze and assign into a sort of interface externs
+extern void initialize(int max_data);
+extern void initialize_representatives(int num_clusters);
+extern int assign();
+
+extern void run(int max_iterations, struct kmeans_metrics *metrics);
+extern void finalize(struct kmeans_metrics *metrics);
+
 /**
  * Calculates new centroids for the clusters of the given dataset by finding the
  * mean x and y coordinates of the current members of the cluster for each cluster.
  *
  * The centroids are set in the array passed in, which is expected to be pre-allocated
  * and contain the previous centroids: these are overwritten by the new values.
- *
- * @param dataset set of all points with current cluster assignments
- * @param num_points number of points in the dataset
- * @param centroids array to hold the centroids - already allocated
- * @param num_clusters number of clusters - hence size of the centroids array
  */
-extern void calculate_centroids(struct pointset* dataset, struct pointset *centroids);
+extern void calculate_centroids();
 
-int main(int argc, char* argv [])
-{
-    log_config = new_log_config();
-    kmeans_config = new_kmeans_config();
-    parse_kmeans_cli(argc, argv, kmeans_config, log_config);
+void main_loop(int max_iterations, struct kmeans_metrics *metrics) {
 
-#ifdef KMEANS_MPI
-    //
-    // MPI PREP
-    //
-    int mpi_rank, mpi_world_size;
-    MPI_Status status;
-    MPI_Init(NULL, NULL);
-
-    // mpi structure name
-    MPI_Datatype point;
-
-    MPI_Comm_size(MPI_COMM_WORLD, &mpi_world_size);
-    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-
-    if (log_config->debug) {
-        // Get the name of the processor
-        char processor_name[MPI_MAX_PROCESSOR_NAME];
-        int name_len;
-        MPI_Get_processor_name(processor_name, &name_len);
-        DEBUG("Processor %s, rank %d out of %d processors\n",
-              processor_name, mpi_rank, mpi_world_size);
-    }
-#endif
-    int num_points = 0;
-    // MPI Root Process:
-
-#ifdef KMEANS_MPI
-    if (mpi_rank == 0) {
-#endif
-        struct pointset *dataset = allocate_pointset(kmeans_config->max_points);
-        char* csv_file_name = valid_file('f', kmeans_config->in_file);
-        num_points = read_csv_file(csv_file_name, dataset, kmeans_config->max_points, headers, &dimensions);
-
-        // K-Means Algo Step 1: initialize the centroids
-        struct pointset *centroids = allocate_pointset(kmeans_config->num_clusters);
-        initialize_centroids(dataset, centroids, kmeans_config->num_clusters);
-
-#ifdef KMEANS_MPI
-//    }
-#endif
-
-#ifdef KMEANS_MPI
-    MPI_Scatter(rand_nums, num_elements_per_proc, MPI_FLOAT, sub_rand_nums,
-                num_elements_per_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);
-    /* Distribute the work among all nodes. The data points itself will stay constant and
-       not change for the duration of the algorithm. */
-    MPI_Scatter(data_x_points, (numOfElements/num_of_processes) + 1, MPI_DOUBLE,
-                recv_x, (numOfElements/num_of_processes) + 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
-    MPI_Scatter(data_y_points, (numOfElements/num_of_processes) + 1, MPI_DOUBLE,
-                recv_y, (numOfElements/num_of_processes) + 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-//
-#endif
     // we deliberately skip the centroid initialization phase in calculating the
     // total time as it is constant and never optimized
     double start_time = omp_get_wtime();
-    if (log_config->debug) {
-        printf("\nDatabase:\n");
-        print_headers(stdout, headers, dimensions);
-        print_points(stdout, dataset);
-        printf("\nCentroids:\n");
-        print_centroids(stdout, centroids);
-    }
-    int cluster_changes = num_points;
+    int cluster_changes = MAX_POINTS; // start at a max then work down to zero chagnes
     int iterations = 0;
 
-    // set up a metrics struct to hold timing and other info for comparison
-    struct kmeans_metrics *metrics = new_kmeans_metrics(kmeans_config);
-    metrics->num_points = num_points;
-    metrics->omp_max_threads = omp_get_max_threads();
-    // get kind: dynamic, static, auto.. and the chunk size
-    metrics->omp_schedule_kind = omp_schedule_kind(&metrics->omp_chunk_size);
-
-    while (cluster_changes > 0 && iterations < kmeans_config->max_iterations) {
+    while (cluster_changes > 0 && iterations < max_iterations) {
+        DEBUG("Starting iteration %d. %d change in last iteration", iterations, cluster_changes);
         // K-Means Algo Step 2: assign every point to a cluster (closest centroid)
         double start_iteration = omp_get_wtime();
         double start_assignment = start_iteration;
-        cluster_changes = assign_clusters(dataset, centroids);
+        DEBUG("Main loop calling assign_clusters");
+//        cluster_changes = assign_clusters(dataset, centroids);
+        cluster_changes = assign();
         double assignment_seconds = omp_get_wtime() - start_assignment;
 
         metrics->assignment_seconds += assignment_seconds;
 
-        if (log_config->debug) {
-            printf("\n%d clusters changed after assignment phase. New assignments:\n", cluster_changes);
-            print_points(stdout, dataset);
-            printf("Time taken: %.3f seconds total in assignment so far: %.3f seconds",
-                   assignment_seconds, metrics->assignment_seconds);
-        }
         // K-Means Algo Step 3: calculate new centroids: one at the center of each cluster
         double start_centroids = omp_get_wtime();
-        calculate_centroids(dataset, centroids);
+        DEBUG("Main loop calling calculate_centroids");
+        calculate_centroids();
         double centroids_seconds = omp_get_wtime() - start_centroids;
         metrics->centroids_seconds += centroids_seconds;
 
-        if (log_config->verbose) {
-            printf("New centroids calculated New assignments:\n");
-            print_centroids(stdout, centroids);
-            printf("Time taken: %.3f seconds total in centroid calculation so far: %.3f seconds",
-                   centroids_seconds, metrics->centroids_seconds);
-        }
 #ifndef SKIP_MAX_ITERATION_CALC
         // potentially costly calculation may skew stats, hence only in ifdef
         double iteration_seconds = omp_get_wtime() - start_iteration;
@@ -186,24 +116,16 @@ int main(int argc, char* argv [])
     }
     metrics->total_seconds = omp_get_wtime() - start_time;
     metrics->used_iterations = iterations;
-   /* Process 0 sends and Process 1 receives */
-//    if (rank == 0) {
-//        msg = 123456;
-//        MPI_Send( &msg, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
-//    }
-//    else if (rank == 1) {
-//        MPI_Recv( &msg, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status );
-//        printf( "Received %d\n", msg);
-//    }
+    if (!log_config->quiet) {
+        printf("\nEnded after %d iterations with %d changed clusters\n", iterations, cluster_changes);
+    }
+}
 
+void main_finalize(struct pointset *dataset, struct kmeans_metrics *metrics) {
 
 #ifdef KMEANS_MPI
     MPI_Finalize();
 #endif
-    if (!log_config->quiet) {
-        printf("\nEnded after %d iterations with %d changed clusters\n", iterations, cluster_changes);
-    }
-
     // output file is not always written: sometimes we only run for metrics and compare with test data
     if (kmeans_config->out_file) {
         if (!log_config->silent) {
@@ -217,7 +139,7 @@ int main(int argc, char* argv [])
     }
 
     if (kmeans_config->test_file) {
-        char* test_file_name = valid_file('t', kmeans_config->test_file);
+        char *test_file_name = valid_file('t', kmeans_config->test_file);
         if (!log_config->quiet) {
             printf("Comparing results against test file: %s\n", kmeans_config->test_file);
         }
@@ -236,10 +158,41 @@ int main(int argc, char* argv [])
         print_metrics_headers(stdout);
         print_metrics(stdout, metrics);
     }
+}
 
+void debug_setup(struct pointset *dataset, struct pointset *centroids)
+{
+    if (log_config->debug) {
+        printf("\nDatabase Setup:\n");
+        print_headers(stdout, headers, dimensions);
+        print_points(stdout, dataset, "Setup ");
+        printf("\nCentroids Setup:\n");
+        print_centroids(stdout, centroids, "Setup ");
+    }
+}
+
+int main(int argc, char* argv [])
+{
+    log_config = new_log_config();
+    kmeans_config = new_kmeans_config();
+    parse_kmeans_cli(argc, argv, kmeans_config, log_config);
+
+    DEBUG("Initializing dataset");
+    initialize(kmeans_config->max_points);
+
+    // K-Means Lloyds alorithm  Step 1: initialize the centroids
+    initialize_representatives(kmeans_config->num_clusters);
+
+    // set up a metrics struct to hold timing and other info for comparison
+    struct kmeans_metrics *metrics = new_kmeans_metrics(kmeans_config);
+
+    // run the main loop
+    run(kmeans_config->max_iterations, metrics);
+
+    // finalize with the metrics
+    finalize(metrics);
     free(log_config);
     free(kmeans_config);
-    free(dataset);
     return 0;
 }
 

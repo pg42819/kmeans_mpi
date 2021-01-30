@@ -194,7 +194,7 @@ int omp_schedule_kind(int *chunk_size)
 /**
  * Print debug information for the assignment of a point to a cluster
  */
-void debug_assignment(struct pointset *dataset, int dataset_index,
+void trace_assignment(struct pointset *dataset, int dataset_index,
                       struct pointset *centroids, int centroid_index, double min_distance)
 {
     if (log_config->verbose) {
@@ -258,9 +258,12 @@ const char *p_to_s(struct pointset *dataset, int index)
  * @param dataset array of points
  * @param num_points size of the array
  */
-void print_points(FILE *out, struct pointset *dataset) {
+void print_points(FILE *out, struct pointset *dataset, const char *label) {
+    if (label == NULL) {
+        label = "";
+    }
     for (int i = 0; i < dataset->num_points; ++i) {
-        fprintf(out, "%s,cluster_%d\n", p_to_s(dataset, i), dataset->cluster_ids[i]);
+        fprintf(out, "%s%s,cluster_%d\n", label, p_to_s(dataset, i), dataset->cluster_ids[i]);
     }
 }
 
@@ -271,9 +274,12 @@ void print_points(FILE *out, struct pointset *dataset) {
  * @param centroids array of centroid points
  * @param num_points number of centroids == number of clusters
  */
-void print_centroids(FILE *out, struct pointset *centroids) {
+void print_centroids(FILE *out, struct pointset *centroids, char *label) {
+    if (label == NULL) {
+        label = "";
+    }
     for (int i = 0; i < centroids->num_points; ++i) {
-        fprintf(out, "centroid[%d] is at %s\n", i, p_to_s(centroids, i));
+        fprintf(out, "%scentroid[%d] is at %s\n", label, i, p_to_s(centroids, i));
     }
 }
 
@@ -304,7 +310,7 @@ void print_metrics_headers(FILE *out)
 {
     fprintf(out, "label,used_iterations,total_seconds,assignments_seconds,"
                  "centroids_seconds,max_iteration_seconds,num_points,"
-                 "num_clusters,max_iterations,max_threads,omp_schedule,omp_chunk_size,"
+                 "num_clusters,max_iterations,num_processors,"
                  "test_results\n");
 }
 
@@ -324,11 +330,11 @@ void print_metrics(FILE *out, struct kmeans_metrics *metrics)
             test_results = "FAILED!";
             break;
     }
-    fprintf(out, "%s,%d,%f,%f,%f,%f,%d,%d,%d,%d,%d,%d,%s\n",
+    fprintf(out, "%s,%d,%f,%f,%f,%f,%d,%d,%d,%d,%s\n",
             metrics->label, metrics->used_iterations, metrics->total_seconds,
             metrics->assignment_seconds, metrics->centroids_seconds, metrics->max_iteration_seconds,
             metrics->num_points, metrics->num_clusters, metrics->max_iterations,
-            metrics->omp_max_threads, metrics->omp_schedule_kind, metrics->omp_chunk_size,
+            metrics->num_processors,
             test_results);
 }
 
@@ -421,7 +427,7 @@ void write_csv(FILE *csv_file, struct pointset *dataset, char *headers[], int di
         print_headers(csv_file, headers, dimensions);
     }
 
-    print_points(csv_file, dataset);
+    print_points(csv_file, dataset, NULL);
 }
 
 void write_csv_file(char *csv_file_name, struct pointset *dataset, char *headers[], int dimensions) {

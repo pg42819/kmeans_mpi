@@ -34,11 +34,13 @@ extern double point_distance(struct pointset *pointset1, int index1, struct poin
 extern const char *p_to_s(struct pointset *dataset, int index);
 extern double euclidean_distance(double x2, double y2, double x1, double y1);
 extern void kmeans_usage();
-extern void print_points(FILE *out, struct pointset *dataset);
+extern void print_points(FILE *out, struct pointset *dataset, const char *label);
 extern void print_headers(FILE *out, char **headers, int dimensions);
 extern void print_metrics_headers(FILE *out);
-extern void print_centroids(FILE *out, struct pointset *centroids);
+extern void print_centroids(FILE *out, struct pointset *centroids, char *label);
 
+
+extern void debug_setup(struct pointset *dataset, struct pointset *centroids);
 extern void print_metrics(FILE *out, struct kmeans_metrics *metrics);
 extern int read_csv_file(char* csv_file_name, struct pointset *dataset, int max_points, char *headers[], int *dimensions);
 extern int read_csv(FILE* csv_file, struct pointset *dataset, int max_points, char *headers[], int *dimensions);
@@ -53,7 +55,7 @@ extern void validate_config(struct log_config config);
 
 extern int test_results(char *test_file_name, struct pointset *dataset);
 
-extern void debug_assignment(struct pointset *dataset, int dataset_index,
+extern void trace_assignment(struct pointset *dataset, int dataset_index,
                              struct pointset *centroids, int centroid_index, double min_distance);
 
 // help with debugging OMP

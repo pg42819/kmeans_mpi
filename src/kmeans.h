@@ -51,11 +51,6 @@ struct kmeans_metrics {
     int num_clusters;    // number of clusters from  -k command line arg
     int max_iterations;  // max iterations from -i command line arg
     int num_processors; // number of processors that mpi is running on
-    int omp_max_threads; // OMP max threads, usually set by OMP_NUM_THREADS env var or an function call
-    // Next 2 are OMP schedule kind (static, dynamic, auto) and chunk size, set by OMP_SCHEDULE var.
-    // See: https://gcc.gnu.org/onlinedocs/libgomp/omp_005fget_005fschedule.html#omp_005fget_005fschedule
-    int omp_schedule_kind;
-    int omp_chunk_size;
 };
 
 #endif

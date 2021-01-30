@@ -1,0 +1,16 @@
+unset KMEANS_RUN_NOOP
+unset KMEANS_RUN_INTERACTIVE
+export KMEANS_RUN_BLOCK=16
+unset KMEANS_RUN_NO_INTERCHANGE
+unset KMEANS_RUN_NO_TRANSPOSE
+# vector is 3
+export KMEANS_RUN_PROG_FIRST=3
+export KMEANS_RUN_REPORT=_vector
+export KMEANS_RUN_REPEATS=20
+# enable vector simd instructions
+export KMEANS_RUN_PAPI=PAPI_L1_DCM:PAPI_L2_DCM:PAPI_L3_TCM
+#export KMEANS_RUN_SIZES="32"
+# use the two smaller datasets
+export KMEANS_RUN_SIZES="32 96"
+#export KMEANS_RUN_SIZES="32 96 256"
+#export KMEANS_RUN_SIZES="32 96 256 2048"

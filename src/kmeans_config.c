@@ -49,8 +49,6 @@ struct kmeans_metrics *new_kmeans_metrics(struct kmeans_config *config)
     new_metrics->num_clusters = config->num_clusters;
     new_metrics->total_seconds = 0;
     new_metrics->test_result = 0; // zero = no test performed
-    new_metrics->omp_max_threads = -1;
-    new_metrics->omp_schedule_kind = -1; // if we see -1 then the kind was not fetched
     return new_metrics;
 }
 
