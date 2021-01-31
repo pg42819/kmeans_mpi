@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include "mpi_test.h"
 #include "kmeans.h"
 #ifdef __APPLE__
@@ -10,6 +11,14 @@
 
 #define NUM_POINTS 6
 #define MAX_POINTS 300
+#define RED   "\x1B[31m"
+#define GRN   "\x1B[32m"
+#define YEL   "\x1B[33m"
+#define BLU   "\x1B[34m"
+#define MAG   "\x1B[35m"
+#define CYN   "\x1B[36m"
+#define WHT   "\x1B[37m"
+#define RESET "\x1B[0m"
 
 int mpi_rank = 0;
 int mpi_world_size = 0;
@@ -19,6 +28,21 @@ bool is_root;
 char node_label[20];
 double *main_dataset;
 double *node_dataset;
+
+
+int dbg(const char *fmt, ...)
+{
+    int color = mpi_rank % 6 + 1;
+    printf("\033[0;3%dm", color);
+    fprintf(stdout, "node label");
+    va_list args;
+    va_start(args, fmt);
+    int rc = vfprintf(stdout, fmt, args);
+    va_end(args);
+    fprintf(stdout, "\n");
+    printf("\033[0m"); // reset terminal color
+    return rc;
+}
 
 void print_points(char *label)
 {
@@ -46,12 +70,12 @@ int mpi_gather_dataset(double *main_dataset, double *node_dataset)
     // if root node, then the dataset is already populated
     /* Distribute the work among all nodes. The data points itself will stay constant and
         not change for the duration of the algorithm. */
-    DEBUG("%sStarting Gather of subset with %d points:", node_label, num_points_subnode);
+    dbg("%sStarting Gather of subset with %d points:", node_label, num_points_subnode);
 //    fprintf(stderr, "GO!!!!!!!\n\n");
     MPI_Gather(node_dataset, num_points_subnode, MPI_DOUBLE,
                main_dataset, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 //    fprintf(stderr, "DONE!!!!!!!\n\n");
-    DEBUG("%sGathered/Sent %d points from other nodes. First x_coord is %.2f",
+    dbg("%sGathered/Sent %d points from other nodes. First x_coord is %.2f",
           node_label, num_points_subnode, node_dataset[0]);
 }
 
@@ -159,7 +183,7 @@ int main()
                 printf("SUCCESS: point[%d] expected %.2f got %.2f\n", i, expected, main_dataset[i]);
             }
         }
-        fprintf(stderr, (passed ? "\nPASSED!\n" : "\n!!!! failed !!!!\n"));
+        fprintf(stderr, (passed ? "\nPASSED Again!!\n" : "\n!!!! failed !!!!\n"));
     }
 
     // else the subnodes do not run the main loop but all mpi nodes must finalize

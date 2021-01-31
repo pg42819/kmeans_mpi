@@ -85,15 +85,17 @@ ifeq ($(UNAME_S),Darwin)
 	INCLUDES=
 	OMP_FLAGS= -fopenmp
 	CXXFLAGS= $(OPTIMIZATION) -std=c99 -g $(OMP_FLAGS)
-	MPI_LIBS=/opt/openmpi/lib
+#	MPI_LIB=-L/opt/openmpi/lib -l
 endif
 #CXXFLAGS= -O3 -std=c++11 -mavx -pg -qopenmp -qopt-report5 $(INCLUDES)
-
+#
 PROGS=$(BIN)kmeans
 
 .PHONY: all
-#all: $(BIN) kmeans_mpi1
-all: $(BIN) mpitestpoints mpitest
+#all: $(BIN) kmeans_mpi1 mpitestpoints
+all: $(BIN) gcckmeans_mpi1
+#all: $(BIN) mpitestpoints
+# mpitest
 #all: $(BIN) kmeans_simple
 #kmeans_omp1 kmeans_omp2
 
@@ -117,11 +119,27 @@ kmeans_mpi1:
  						  $(SRC)kmeans_mpi1_impl.c $(SRC)csvhelper.c \
  						  $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
 
+gcckmeans_mpi1:
+	$(CXX) $(CXXFLAGS) -o $(BIN)kmeans_mpi1 $(SRC)kmeans.c \
+						  $(SRC)kmeans_config.c $(SRC)kmeans_support.c \
+ 						  $(SRC)kmeans_mpi1_impl.c $(SRC)csvhelper.c \
+ 						  $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
+
 mpitest:
 	$(MPICC) $(CXXFLAGS) -o $(BIN)mpitest $(SRC)mpi_test.c $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
 
 mpitestpoints:
 	$(MPICC) $(CXXFLAGS) -o $(BIN)mpitestpoints $(SRC)mpi_test_points.c $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
+
+
+mpitestpointers:
+	$(MPICC) $(CXXFLAGS) -o $(BIN)mpitestpointers $(SRC)mpi_test_pointers.c $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
+
+testpointers:
+	$(CXX) $(CXXFLAGS) -o $(BIN)mpitestpointers $(SRC)mpi_test_pointers.c $(MPI_INC) $(HEADERS) $(LIBS)
+
+testlog:
+	$(CXX) $(CXXFLAGS) -o $(BIN)testlog $(SRC)test_mpi_log.c $(MPI_INC) $(HEADERS) $(LIBS)
 
 
 $(BIN):

@@ -11,17 +11,17 @@
 #define NO_CLUSTER_ID -1
 
 // global config
-extern struct log_config *log_config;
+extern enum log_level_t log_level;
 extern struct kmeans_config *kmeans_config;
 
-
-extern struct log_config *new_log_config();
 extern struct kmeans_config *new_kmeans_config();
-extern void parse_kmeans_cli(int argc, char *argv[], struct kmeans_config *kmeans_config, struct log_config *log_config);
+extern void parse_kmeans_cli(int argc, char *argv[], struct kmeans_config *new_config, enum log_level_t *new_log_level);
 extern struct kmeans_metrics *new_kmeans_metrics(struct kmeans_config *config);
+extern void simple_calculate_centroids(struct pointset *dataset, struct pointset *centroids);
+extern int simple_assign_clusters(struct pointset *dataset, struct pointset *centroids);
 
 // basic pointset management
-extern struct pointset *allocate_pointset(int num_points);
+extern struct pointset allocate_pointset(int num_points);
 extern void check_bounds(struct pointset *pointset, int index);
 extern void set_point(struct pointset *pointset, int index, double x, double y, int cluster_id);
 extern void set_cluster(struct pointset *pointset, int index, int cluster_id);
@@ -34,6 +34,7 @@ extern double point_distance(struct pointset *pointset1, int index1, struct poin
 extern const char *p_to_s(struct pointset *dataset, int index);
 extern double euclidean_distance(double x2, double y2, double x1, double y1);
 extern void kmeans_usage();
+extern void debug_points(struct pointset *dataset, const char *label);
 extern void print_points(FILE *out, struct pointset *dataset, const char *label);
 extern void print_headers(FILE *out, char **headers, int dimensions);
 extern void print_metrics_headers(FILE *out);
@@ -51,7 +52,6 @@ extern void write_metrics_file(char *metrics_file_name, struct kmeans_metrics *m
 
 extern char* valid_file(char opt, char *filename);
 extern int valid_count(char opt, char *arg);
-extern void validate_config(struct log_config config);
 
 extern int test_results(char *test_file_name, struct pointset *dataset);
 

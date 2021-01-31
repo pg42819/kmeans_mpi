@@ -7,7 +7,6 @@
 #include "kmeans.h"
 #include "log.h"
 
-extern struct log_config *log_config;
 extern struct kmeans_config *kmeans_config;
 
 /**
@@ -26,15 +25,6 @@ struct kmeans_config *new_kmeans_config()
     new_config->num_clusters = NUM_CLUSTERS;
     new_config->max_iterations = MAX_ITERATIONS;
     new_config->num_processors = 1;
-    return new_config;
-}
-struct log_config *new_log_config()
-{
-    struct log_config *new_config = malloc(sizeof(struct log_config));
-    new_config->silent = false;
-    new_config->quiet = false;
-    new_config->verbose = false;
-    new_config->debug = false;
     return new_config;
 }
 
@@ -108,7 +98,7 @@ void validate_config(struct kmeans_config *config)
 
     const char* distance_type = config->proper_distance ? "proper distance" : "relative distance (d^2)";
     const char* loop_order_names[] = {"ijk", "ikj", "jki"};
-    if (!log_config->quiet) {
+    if (IS_DEBUG) {
         printf("Config:\n");
         printf("Input file        : %-10s\n", config->in_file);
         printf("Output file       : %-10s\n", config->out_file);
@@ -125,26 +115,28 @@ void validate_config(struct kmeans_config *config)
 /**
  * Parse command line args and construct a config object
  */
-void parse_kmeans_cli(int argc, char *argv[], struct kmeans_config *kmeans_config, struct log_config *log_config)
+void parse_kmeans_cli(int argc, char *argv[], struct kmeans_config *new_config, enum log_level_t *new_log_level)
 {
     int opt;
     struct option long_options[] = {
-            {"input", required_argument, NULL, 'f'},
-            {"output", required_argument, NULL, 'o'},
-            {"test", required_argument, NULL, 't'},
-            {"metrics", required_argument, NULL, 'm'},
-            {"label", required_argument, NULL, 'l'},
-            {"clusters", required_argument, NULL, 'k'},
-            {"iterations", required_argument, NULL, 'i'},
-            {"max-points", required_argument, NULL, 'n'},
-            {"proper-distance", required_argument, NULL, 'e'},
-            {"help", required_argument, NULL, 'h'},
+            {"input", required_argument, NULL,             'f'},
+            {"output", required_argument, NULL,            'o'},
+            {"test", required_argument, NULL,              't'},
+            {"metrics", required_argument, NULL,           'm'},
+            {"label", required_argument, NULL,             'l'},
+            {"clusters", required_argument, NULL,          'k'},
+            {"iterations", required_argument, NULL,        'i'},
+            {"max-points", required_argument, NULL,        'n'},
+            {"proper-distance", required_argument, NULL,   'e'},
+            {"help", required_argument, NULL,              'h'},
             // log options
-            {"silent", no_argument, NULL, 'z' },
-            {"verbose", no_argument, NULL, 'v' },
-            {"debug", no_argument, NULL, 'd' },
-            {"quiet", no_argument, NULL, 'q'},
-            {NULL, 0, NULL, 0}
+            {"error", no_argument, (int *)new_log_level,   error},
+            {"warn", no_argument, (int *)new_log_level,    warn},
+            {"info", no_argument, (int *)new_log_level,    info},
+            {"verbose", no_argument, (int *)new_log_level, verbose},
+            {"debug", no_argument, (int *)new_log_level,   debug},
+            {"trace", no_argument, (int *)new_log_level,   trace},
+            {NULL, 0, NULL,                                0}
     };
     int option_index = 0;
     while((opt = getopt_long(argc, argv, "-o:f:i:k:n:l:t:m:hqdvze" , long_options, &option_index)) != -1)
@@ -162,45 +154,31 @@ void parse_kmeans_cli(int argc, char *argv[], struct kmeans_config *kmeans_confi
                 kmeans_usage();
                 break;
             case 'i':
-                kmeans_config->max_iterations = valid_count(optopt, optarg);
+                new_config->max_iterations = valid_count(optopt, optarg);
                 break;
             case 'n':
-                kmeans_config->max_points = valid_count(optopt, optarg);
+                new_config->max_points = valid_count(optopt, optarg);
                 break;
             case 'k':
-                kmeans_config->num_clusters = valid_count(optopt, optarg);
+                new_config->num_clusters = valid_count(optopt, optarg);
                 break;
             case 'f':
-                kmeans_config->in_file = valid_file('f', optarg);
+                new_config->in_file = valid_file('f', optarg);
                 break;
             case 'o':
-                kmeans_config->out_file = optarg;
+                new_config->out_file = optarg;
                 break;
             case 't':
-                kmeans_config->test_file = optarg;
+                new_config->test_file = optarg;
                 break;
             case 'm':
-                kmeans_config->metrics_file = optarg;
+                new_config->metrics_file = optarg;
                 break;
             case 'e':
-                kmeans_config->proper_distance = true;
+                new_config->proper_distance = true;
                 break;
             case 'l':
-                kmeans_config->label = optarg;
-                break;
-
-            // log options
-            case 'd':
-                log_config->debug = true;
-                break;
-            case 'z':
-                log_config->silent = true;
-                break;
-            case 'v':
-                log_config->verbose = true;
-                break;
-            case 'q':
-                log_config->quiet = true;
+                new_config->label = optarg;
                 break;
             case ':':
                 fprintf(stderr, "ERROR: Option %c needs a value\n", optopt);
@@ -211,9 +189,9 @@ void parse_kmeans_cli(int argc, char *argv[], struct kmeans_config *kmeans_confi
                 kmeans_usage();
                 break;
             default:
-                fprintf(stderr, "ERROR: Should never get here. opt=[%c]", opt);
+                fprintf(stderr, "ERROR: Unknown option: %c\n", optopt);
         }
     }
 
-    validate_config(kmeans_config);
+    validate_config(new_config);
 }

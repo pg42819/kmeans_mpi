@@ -16,12 +16,12 @@ int num_points_subnode = 0; // number of points handled by this node
 int num_points_total = 0;
 bool is_root;
 char node_label[20];
-struct pointset datapoints;
-struct pointset nodepoints;
+struct pointset main_dataset;
+struct pointset node_dataset;
 
 struct pointset allocate_pointset(int num_points)
 {
-    struct pointset new_pointset;// = (struct pointset *)malloc(sizeof(struct pointset));
+    struct pointset new_pointset;// = (struct pointset )malloc(sizeof(struct pointset));
     new_pointset.x_coords = (double *)malloc(num_points * sizeof(double));
     new_pointset.y_coords = (double *)malloc(num_points * sizeof(double));
     new_pointset.cluster_ids = (int *)malloc(num_points * sizeof(int));
@@ -33,38 +33,17 @@ void print_points(char *label)
 {
     printf("%s [%s] Main points:\n", node_label, label);
     for (int i = 0; i < num_points_total; ++i) {
-        printf("    %s [%s] main [%d] %.1f\n", node_label, label, i, datapoints.x_coords[i]);
+        printf("    %s [%s] main [%d] %.1f\n", node_label, label, i, main_dataset.x_coords[i]);
     }
     printf("%s [%s] Node points:\n", node_label, label);
     for (int i = 0; i < num_points_subnode; ++i) {
-        printf("    %s [%s] node [%d] %.1f\n", node_label, label, i, nodepoints.x_coords[i]);
+        printf("    %s [%s] node [%d] %.1f\n", node_label, label, i, node_dataset.x_coords[i]);
     }
     printf("\n");
 }
-//
-int mpi_scatter_dataset_simple(double *dataset, double *nodeset)
-{
-    MPI_Scatter(dataset, num_points_subnode, MPI_DOUBLE,
-                nodeset, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    DEBUG("%sScattered/Received %d points to/from other nodes. First x_coord is %.2f",
-          node_label, num_points_subnode, nodeset[0]);
-}
 
-int mpi_gather_dataset_simple(double *dataset, double *nodeset)
-{
-    // if root node, then the dataset is already populated
-    /* Distribute the work among all nodes. The data points itself will stay constant and
-        not change for the duration of the algorithm. */
-    DEBUG("%sStarting Gather of subset with %d points:", node_label, num_points_subnode);
-    fprintf(stderr, "GO!!!!!!!\n\n");
-    MPI_Gather(nodeset, num_points_subnode, MPI_DOUBLE,
-               dataset, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    fprintf(stderr, "DONE!!!!!!!\n\n");
-    DEBUG("%sGathered/Sent %d points from other nodes. First x_coord is %.2f",
-          node_label, num_points_subnode, nodeset[0]);
-}
 
-int mpi_scatter_dataset(struct pointset dataset, struct pointset nodeset)
+int mpi_scatter_dataset()
 {
     // if root node, then the dataset is already populated
     /* Distribute the work among all nodes. The data points itself will stay constant and
@@ -73,45 +52,42 @@ int mpi_scatter_dataset(struct pointset dataset, struct pointset nodeset)
     DEBUG("%sStarting scatter", node_label);
 //    mpi_scatter_dataset_simple(dataset.x_coords, nodeset.x_coords);
 //
-    MPI_Scatter(dataset.x_coords, num_points_subnode, MPI_DOUBLE,
-                nodeset.x_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-//    MPI_Scatter(dataset->y_coords, num_points_subnode, MPI_DOUBLE,
-//                nodeset->y_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-//    MPI_Scatter(dataset->cluster_ids, num_points_subnode, MPI_INT,
-//                nodeset->cluster_ids, num_points_subnode, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Scatter(main_dataset.x_coords, num_points_subnode, MPI_DOUBLE,
+                node_dataset.x_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Scatter(main_dataset.y_coords, num_points_subnode, MPI_DOUBLE,
+                node_dataset.y_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Scatter(main_dataset.cluster_ids, num_points_subnode, MPI_INT,
+                node_dataset.cluster_ids, num_points_subnode, MPI_INT, 0, MPI_COMM_WORLD);
     DEBUG("%sScattered/Received %d points to/from other nodes. First x_coord is %.2f",
-          node_label, num_points_subnode, nodeset.x_coords[0]);
+          node_label, num_points_subnode, node_dataset.x_coords[0]);
 }
 
-int mpi_gather_dataset(struct pointset dataset, struct pointset nodeset)
+int mpi_gather_dataset()
 {
-    // if root node, then the dataset is already populated
-    /* Distribute the work among all nodes. The data points itself will stay constant and
-        not change for the duration of the algorithm. */
     DEBUG("%sStarting Gather of subset with %d points:", node_label, num_points_subnode);
-//    print_points(stdout, nodeset, node_label);
+    print_points("PRE Gather ");
     fprintf(stderr, "GO!!!!!!!\n\n");
 //    mpi_gather_dataset_simple(dataset.x_coords, nodeset.x_coords);
-    MPI_Gather(nodeset.x_coords, num_points_subnode, MPI_DOUBLE,
-               dataset.x_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-//    MPI_Gather(nodeset->y_coords, num_points_subnode, MPI_DOUBLE,
-//               main_dataset->y_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-//    MPI_Gather(nodeset->cluster_ids, num_points_subnode, MPI_INT,
-//               main_dataset->cluster_ids, num_points_subnode, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Gather(node_dataset.x_coords, num_points_subnode, MPI_DOUBLE,
+               main_dataset.x_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gather(node_dataset.y_coords, num_points_subnode, MPI_DOUBLE,
+               main_dataset.y_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gather(node_dataset.cluster_ids, num_points_subnode, MPI_INT,
+               main_dataset.cluster_ids, num_points_subnode, MPI_INT, 0, MPI_COMM_WORLD);
 
     fprintf(stderr, "DONE!!!!!!!\n\n");
     DEBUG("%sGathered/Sent %d points from other nodes. First x_coord is %.2f",
-          node_label, num_points_subnode, nodeset.x_coords[0]);
+          node_label, num_points_subnode, node_dataset.x_coords[0]);
 }
 
-int load_dataset(struct pointset dataset)
+int load_dataset()
 {
     for (int i = 0; i < NUM_POINTS; ++i) {
-        datapoints.x_coords[i] = (double)2 * i;
-        datapoints.y_coords[i] = (double)3 * i;
-        datapoints.cluster_ids[i] = -1;
+        main_dataset.x_coords[i] = (double)2 * i;
+        main_dataset.y_coords[i] = (double)3 * i;
+        main_dataset.cluster_ids[i] = -1;
     }
-    datapoints.num_points = NUM_POINTS;
+    main_dataset.num_points = NUM_POINTS;
     return NUM_POINTS;
 }
 
@@ -142,8 +118,8 @@ void initialize(int max_points)
 
     if (is_root) {
         // for root we actually load the dataset, for others we just return the empty one
-        datapoints = allocate_pointset(max_points);
-        num_points_total = load_dataset(datapoints);
+        main_dataset = allocate_pointset(max_points);
+        num_points_total = load_dataset();
        DEBUG("%sLoaded main dataset with %d points", node_label, num_points_total);
 
         // number of points managed by each subnode is the total number divided by processes
@@ -163,7 +139,7 @@ void initialize(int max_points)
     // Create a subnode dataset on each subnode, independent of the main dataset
     // Note: the root node also has a node_dataset since scatter will assign IT a subset
     //       of the total dataset along with all the other subnodes
-    nodepoints = allocate_pointset(num_points_subnode);
+    node_dataset = allocate_pointset(num_points_subnode);
     DEBUG("%sAllocated subnode dataset to %d points", node_label, num_points_subnode);
 }
 
@@ -173,17 +149,17 @@ int assign()
 //    for (int i = 0; i < 20; ++i) {
 //        sleep(1);
 //    }
-    mpi_scatter_dataset(datapoints, nodepoints);
+    mpi_scatter_dataset();
     DEBUG("%sReturned from scatter", node_label);
 
     DEBUG("%sAdding 10 to node dataset points ", node_label);
     for (int i = 0; i < num_points_subnode; ++i) {
-        nodepoints.x_coords[i] += 10.0f;
+        node_dataset.x_coords[i] += 10.0f;
     }
 
     print_points("pre-gather");
 
-    mpi_gather_dataset(datapoints, nodepoints);
+    mpi_gather_dataset();
 
     print_points("post-gather");
 
@@ -209,7 +185,7 @@ int main()
 
         for (int i = 0; i < num_points_total; ++i) {
             double expected = i * 2.0f + 10.f;
-            double actual = datapoints.x_coords[i];
+            double actual = main_dataset.x_coords[i];
             if (actual != expected) {
                 fprintf(stderr, "FAILURE: point[%d] expected %.2f got %.2f\n", i, expected, actual);
                 passed = false;

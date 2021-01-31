@@ -13,34 +13,7 @@
 static char* headers[3];
 static int dimensions;
 struct kmeans_config *kmeans_config;
-struct log_config *log_config;
-
-/**
- * Initializes the given array of points to act as initial centroid "representatives" of the
- * clusters, by selecting the first num_clusters points in the dataset.
- *
- * Note that there are many ways to do this for k-means, most of which are better than the
- * approach used here - the most common of which is to use a random sampling of points from
- * the dataset. Since we are performance tuning, however, we want a consistent performance
- * across difference runs of the algorithm, so we simply select the first K points in the dataset
- * where K is the number of clusters.
- *
- * WARNING: The kmeans can fail if there are equal points in the first K in the dataset
- *          such that two or more of the centroids are the same... try to avoid this in
- *          your dataset (TODO fix this later to skip equal centroids)
- *
- * @param dataset array of all points
- * @param centroids uninitialized array of centroids to be filled
- * @param num_clusters the number of clusters (K) for which centroids are created
- */
-void initialize_centroids(struct pointset* dataset, struct pointset *centroids)
-{
-    if (dataset->num_points < centroids->num_points) {
-        FAIL("There cannot be fewer points than clusters");
-    }
-
-    copy_points(dataset, centroids, 0, centroids->num_points, false);
-}
+enum log_level_t log_level;
 
 int load_dataset(struct pointset *dataset) {
     char *csv_file_name = valid_file('f', kmeans_config->in_file);
@@ -92,7 +65,6 @@ void main_loop(int max_iterations, struct kmeans_metrics *metrics) {
         double start_iteration = omp_get_wtime();
         double start_assignment = start_iteration;
         DEBUG("Main loop calling assign_clusters");
-//        cluster_changes = assign_clusters(dataset, centroids);
         cluster_changes = assign();
         double assignment_seconds = omp_get_wtime() - start_assignment;
 
@@ -116,45 +88,34 @@ void main_loop(int max_iterations, struct kmeans_metrics *metrics) {
     }
     metrics->total_seconds = omp_get_wtime() - start_time;
     metrics->used_iterations = iterations;
-    if (!log_config->quiet) {
-        printf("\nEnded after %d iterations with %d changed clusters\n", iterations, cluster_changes);
-    }
+    INFO("Ended after %d iterations with %d changed clusters\n", iterations, cluster_changes);
 }
 
-void main_finalize(struct pointset *dataset, struct kmeans_metrics *metrics) {
-
-#ifdef KMEANS_MPI
-    MPI_Finalize();
-#endif
+void main_finalize(struct pointset *dataset, struct kmeans_metrics *metrics)
+{
     // output file is not always written: sometimes we only run for metrics and compare with test data
     if (kmeans_config->out_file) {
-        if (!log_config->silent) {
-            printf("Writing output to %s\n", kmeans_config->out_file);
-        }
+        INFO("Writing output to %s\n", kmeans_config->out_file);
         write_csv_file(kmeans_config->out_file, dataset, headers, dimensions);
     }
 
-    if (log_config->debug) {
+    if (IS_DEBUG) {
         write_csv(stdout, dataset, headers, dimensions);
     }
 
     if (kmeans_config->test_file) {
         char *test_file_name = valid_file('t', kmeans_config->test_file);
-        if (!log_config->quiet) {
-            printf("Comparing results against test file: %s\n", kmeans_config->test_file);
-        }
+        INFO("Comparing results against test file: %s\n", kmeans_config->test_file);
         metrics->test_result = test_results(test_file_name, dataset);
     }
 
     if (kmeans_config->metrics_file) {
         // metrics file may or may not already exist
-        if (!log_config->quiet) {
-            printf("Reporting metrics to: %s\n", kmeans_config->metrics_file);
-        }
+        INFO("Reporting metrics to: %s\n", kmeans_config->metrics_file);
         write_metrics_file(kmeans_config->metrics_file, metrics);
     }
 
-    if (!log_config->silent) {
+    if (IS_WARN) {
         print_metrics_headers(stdout);
         print_metrics(stdout, metrics);
     }
@@ -162,20 +123,19 @@ void main_finalize(struct pointset *dataset, struct kmeans_metrics *metrics) {
 
 void debug_setup(struct pointset *dataset, struct pointset *centroids)
 {
-    if (log_config->debug) {
-        printf("\nDatabase Setup:\n");
+    if (IS_DEBUG) {
+        DEBUG("\nDatabase Setup:\n");
         print_headers(stdout, headers, dimensions);
         print_points(stdout, dataset, "Setup ");
-        printf("\nCentroids Setup:\n");
+        DEBUG("\nCentroids Setup:\n");
         print_centroids(stdout, centroids, "Setup ");
     }
 }
 
 int main(int argc, char* argv [])
 {
-    log_config = new_log_config();
     kmeans_config = new_kmeans_config();
-    parse_kmeans_cli(argc, argv, kmeans_config, log_config);
+    parse_kmeans_cli(argc, argv, kmeans_config, &log_level);
 
     DEBUG("Initializing dataset");
     initialize(kmeans_config->max_points);
@@ -186,13 +146,15 @@ int main(int argc, char* argv [])
     // set up a metrics struct to hold timing and other info for comparison
     struct kmeans_metrics *metrics = new_kmeans_metrics(kmeans_config);
 
-    // run the main loop
+//     run the main loop
     run(kmeans_config->max_iterations, metrics);
+//    assign(); // TODO remove and fix run
 
     // finalize with the metrics
     finalize(metrics);
-    free(log_config);
     free(kmeans_config);
     return 0;
 }
+
+
 
