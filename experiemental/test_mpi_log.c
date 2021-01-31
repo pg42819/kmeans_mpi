@@ -1,13 +1,13 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include "mpi_test.h"
-#include "kmeans.h"
+#include "../src/kmeans.h"
 #ifdef __APPLE__
 #include "/opt/openmpi/include/mpi.h"
 #else
 #include <mpi.h>
 #endif
-#include "mpi_log.h"
+#include "../src/mpi_log.h"
 
 int log_level = MPI_LOG_DEBUG;
 int mpi_rank = 0;

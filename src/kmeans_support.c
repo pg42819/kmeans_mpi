@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include "csvhelper.h"
 #include "kmeans.h"
-#include "kmeans_extern.h"
+#include "kmeans_support.h"
 #include "log.h"
 #include <math.h>
 #include <omp.h>
@@ -176,7 +176,7 @@ int omp_schedule_kind(int *chunk_size)
 //    printf("omp_sched_guided    : %d\n", omp_sched_guided);
 //    printf("omp_sched_auto      : %d\n", omp_sched_auto);
 //    printf("omp_sched_monotonic : %d\n", omp_sched_monotonic);
-    // allow for chunk_size null if we don't care about it otherwise assign it
+    // allow for chunk_size null if we don't care about it otherwise assign_clusters it
     if (chunk_size != NULL) {
         *chunk_size = chunk_s;
     }
@@ -198,7 +198,7 @@ int omp_schedule_kind(int *chunk_size)
  * That is, the sum of the squares of the distances between coordinates
  *
  * Note we work with the pure sum of squares - so the _square_ of the distance,
- * since we really only need the _relative_ distances to assign a point to
+ * since we really only need the _relative_ distances to assign_clusters a point to
  * the right cluster - and square-root is a slow function.
  * We have an option to enable the proper square if we need to
  *
@@ -214,7 +214,7 @@ double euclidean_distance(double x2, double y2, double x1, double y1)
     // because its faster, and we only need comparative values for clustering
     // Here we have the option of doing it either way - defaulting to the performant no-sqrt
     double dist = kmeans_config->proper_distance ? sqrt(square_dist) : square_dist;
-    DEBUG("Distance from (%.7f,%.7f) -> (%.7f,%.7f) = %f", x2, y2, x1, y1, dist);
+    TRACE("Distance from (%.7f,%.7f) -> (%.7f,%.7f) = %f", x2, y2, x1, y1, dist);
     return dist;
 }
 

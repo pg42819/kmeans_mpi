@@ -19,6 +19,7 @@ MPI_INC=
 OPTIMIZATION := -O1
 
 SRC=src/
+EXP=experimental/
 TESTDIR=test/
 BIN=bin/
 
@@ -49,6 +50,7 @@ ifeq ($(UNAME_S),Linux)
 		ifeq ($(VEC),yes)
 			CXXFLAGS_VECTOR  = -O3 -qopenmp -g -Wall -Wextra -std=c++11 -Wno-unused-parameter -qopt-report=5 -qopt-report-phase=vec $(DEBUG_FLAGS)
 		else
+#			CXXFLAGS  = $(OPTIMIZATION) -g -Wall -Wextra -std=c99 -Wno-unused-parameter $(DEBUG_FLAGS)
 			CXXFLAGS  = $(OPTIMIZATION) -qopenmp -g -Wall -Wextra -std=c99 -Wno-unused-parameter -qopt-report=2 $(DEBUG_FLAGS)
 		endif
 		#	include directories
@@ -84,6 +86,7 @@ ifeq ($(UNAME_S),Darwin)
 	MPI_INC=-I /opt/openmpi/include
 	INCLUDES=
 	OMP_FLAGS= -fopenmp
+#	CXXFLAGS= $(OPTIMIZATION) -std=c99 -g
 	CXXFLAGS= $(OPTIMIZATION) -std=c99 -g $(OMP_FLAGS)
 #	MPI_LIB=-L/opt/openmpi/lib -l
 endif
@@ -92,13 +95,7 @@ endif
 PROGS=$(BIN)kmeans
 
 .PHONY: all
-#all: $(BIN) kmeans_mpi1 mpitestpoints
-all: $(BIN) gcckmeans_mpi1
-#all: $(BIN) mpitestpoints
-# mpitest
-#all: $(BIN) kmeans_simple
-#kmeans_omp1 kmeans_omp2
-
+all: $(BIN) kmeans_mpi1
 
 kmeans_simple:
 	$(CXX) $(CXXFLAGS) -o $(BIN)kmeans_simple $(SRC)kmeans.c $(SRC)csvhelper.c \
@@ -112,31 +109,27 @@ kmeans_omp1:
 kmeans_omp2:
 	$(CXX) $(CXXFLAGS) -o $(BIN)kmeans_omp2 $(SRC)kmeans.c $(SRC)kmeans_support.c \
  						  $(SRC)kmeans_omp1_impl.c $(SRC)csvhelper.c $(HEADERS) $(LIBS)
+#
+#kmeans_mpi1:
+#	$(MPICC) $(CXXFLAGS) -o $(BIN)kmeans_mpi1 $(SRC)kmeans.c \
+#						  $(SRC)kmeans_config.c $(SRC)kmeans_support.c \
+# 						  $(SRC)kmeans_mpi1_impl.c $(SRC)csvhelper.c \
+# 						  $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
 
 kmeans_mpi1:
-	$(MPICC) $(CXXFLAGS) -o $(BIN)kmeans_mpi1 $(SRC)kmeans.c \
+	$(MPICC) $(CXXFLAGS) -o $(BIN)kmeans_mpi1 $(SRC)kmeans_mpi.c \
 						  $(SRC)kmeans_config.c $(SRC)kmeans_support.c \
- 						  $(SRC)kmeans_mpi1_impl.c $(SRC)csvhelper.c \
- 						  $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
-
-gcckmeans_mpi1:
-	$(CXX) $(CXXFLAGS) -o $(BIN)kmeans_mpi1 $(SRC)kmeans.c \
-						  $(SRC)kmeans_config.c $(SRC)kmeans_support.c \
- 						  $(SRC)kmeans_mpi1_impl.c $(SRC)csvhelper.c \
- 						  $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
+ 						  $(SRC)csvhelper.c $(MPI_INC) $(HEADERS) $(LIBS)
 
 mpitest:
-	$(MPICC) $(CXXFLAGS) -o $(BIN)mpitest $(SRC)mpi_test.c $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
+	$(MPICC) $(CXXFLAGS) -o $(BIN)mpitest $(EXP)mpi_test.c $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
 
 mpitestpoints:
-	$(MPICC) $(CXXFLAGS) -o $(BIN)mpitestpoints $(SRC)mpi_test_points.c $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
+	$(MPICC) $(CXXFLAGS) -o $(BIN)mpitestpoints $(EXP)mpi_test_points.c $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
 
 
 mpitestpointers:
-	$(MPICC) $(CXXFLAGS) -o $(BIN)mpitestpointers $(SRC)mpi_test_pointers.c $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
-
-testpointers:
-	$(CXX) $(CXXFLAGS) -o $(BIN)mpitestpointers $(SRC)mpi_test_pointers.c $(MPI_INC) $(HEADERS) $(LIBS)
+	$(MPICC) $(CXXFLAGS) -o $(BIN)mpitestpointers $(EXP)mpi_test_pointers.c $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
 
 testlog:
 	$(CXX) $(CXXFLAGS) -o $(BIN)testlog $(SRC)test_mpi_log.c $(MPI_INC) $(HEADERS) $(LIBS)

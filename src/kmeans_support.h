@@ -19,6 +19,7 @@ extern void parse_kmeans_cli(int argc, char *argv[], struct kmeans_config *new_c
 extern struct kmeans_metrics *new_kmeans_metrics(struct kmeans_config *config);
 extern void simple_calculate_centroids(struct pointset *dataset, struct pointset *centroids);
 extern int simple_assign_clusters(struct pointset *dataset, struct pointset *centroids);
+extern void initialize_centroids(struct pointset *dataset, struct pointset *centroids);
 
 // basic pointset management
 extern struct pointset allocate_pointset(int num_points);

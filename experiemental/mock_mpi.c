@@ -5,7 +5,7 @@
 #else
 #include <mpi.h>
 #endif
-#include "mpi_log.h"
+#include "../src/mpi_log.h"
 #include "mock_mpi.h"
 
 #define NUM_POINTS 6

@@ -5,7 +5,7 @@
 #else
 #include <mpi.h>
 #endif
-#include "mpi_log.h"
+#include "../src/mpi_log.h"
 
 #undef MPI_Datatype
 #define MPI_Datatype int

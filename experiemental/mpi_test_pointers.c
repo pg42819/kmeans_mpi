@@ -1,13 +1,13 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include "mpi_test.h"
-#include "kmeans.h"
+#include "../src/kmeans.h"
 #ifdef __APPLE__
 #include "/opt/openmpi/include/mpi.h"
 #else
 #include <mpi.h>
 #endif
-#include "mpi_log.h"
+#include "../src/mpi_log.h"
 
 #define NUM_POINTS 6
 
@@ -132,13 +132,13 @@ void initialize(int max_points)
     mpi_debug("Got %d as num_points_subnode after broadcast", num_points_subnode);
 
     // Create a subnode dataset on each subnode, independent of the main dataset
-    // Note: the root node also has a node_dataset since scatter will assign IT a subset
+    // Note: the root node also has a node_dataset since scatter will assign_clusters IT a subset
     //       of the total dataset along with all the other subnodes
     node_dataset = allocate_pointset(num_points_subnode);
     mpi_debug("Allocated node dataset to %d points of space", num_points_subnode);
 }
 
-int assign()
+int assign_clusters()
 {
     mpi_debug("Starting assign_clusters with %d points", num_points_subnode);
 //    for (int i = 0; i < 20; ++i) {
@@ -159,7 +159,7 @@ int assign()
     print_points("post-gather");
 
 //    MPI_Barrier(MPI_COMM_WORLD);
-    mpi_trace("Leaving assign");
+    mpi_trace("Leaving assign_clusters");
 
 
     // TODO barrier probably not necessary due to gather - get rid of it when all else is working
@@ -171,7 +171,7 @@ int main()
 {
     initialize(MAX_POINTS);
     print_points("initial");
-    assign();
+    assign_clusters();
 
     bool passed = true;
     if (is_root) {
