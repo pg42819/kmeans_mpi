@@ -87,7 +87,7 @@ ifeq ($(UNAME_S),Darwin)
 	INCLUDES=
 	OMP_FLAGS= -fopenmp
 #	CXXFLAGS= $(OPTIMIZATION) -std=c99 -g
-	CXXFLAGS= $(OPTIMIZATION) -std=c99 -g $(OMP_FLAGS)
+	CXXFLAGS= $(OPTIMIZATION) -std=c99 -g $(OMP_FLAGS) -v
 #	MPI_LIB=-L/opt/openmpi/lib -l
 endif
 #CXXFLAGS= -O3 -std=c++11 -mavx -pg -qopenmp -qopt-report5 $(INCLUDES)
@@ -95,31 +95,23 @@ endif
 PROGS=$(BIN)kmeans
 
 .PHONY: all
-all: $(BIN) kmeans_mpi1
+all: $(BIN) kmeans_simple
 
 kmeans_simple:
-	$(CXX) $(CXXFLAGS) -o $(BIN)kmeans_simple $(SRC)kmeans.c $(SRC)csvhelper.c \
-						  $(SRC)kmeans_config.c $(SRC)kmeans_support.c \
- 						  $(SRC)kmeans_simple_impl.c $(HEADERS) $(LIBS)
-
-kmeans_omp1:
-	$(CXX) $(CXXFLAGS) -o $(BIN)kmeans_omp1 $(SRC)kmeans.c $(SRC)kmeans_support.c \
- 						  $(SRC)kmeans_omp1_impl.c $(SRC)csvhelper.c $(HEADERS) $(LIBS)
-
-kmeans_omp2:
-	$(CXX) $(CXXFLAGS) -o $(BIN)kmeans_omp2 $(SRC)kmeans.c $(SRC)kmeans_support.c \
- 						  $(SRC)kmeans_omp1_impl.c $(SRC)csvhelper.c $(HEADERS) $(LIBS)
-#
-#kmeans_mpi1:
-#	$(MPICC) $(CXXFLAGS) -o $(BIN)kmeans_mpi1 $(SRC)kmeans.c \
-#						  $(SRC)kmeans_config.c $(SRC)kmeans_support.c \
-# 						  $(SRC)kmeans_mpi1_impl.c $(SRC)csvhelper.c \
-# 						  $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
-
+	$(CXX) $(CXXFLAGS) -o $(BIN)kmeans_simple $(SRC)kmeans.c \
+						  $(SRC)kmeans_config.c $(SRC)kmeans_support.c $(SRC)kmeans_sequential.c \
+ 						  $(SRC)kmeans_simple_impl.c \
+						  $(SRC)csvhelper.c $(HEADERS) $(LIBS)
 kmeans_mpi1:
-	$(MPICC) $(CXXFLAGS) -o $(BIN)kmeans_mpi1 $(SRC)kmeans_mpi.c \
-						  $(SRC)kmeans_config.c $(SRC)kmeans_support.c \
- 						  $(SRC)csvhelper.c $(MPI_INC) $(HEADERS) $(LIBS)
+	$(MPICC) $(CXXFLAGS) -o $(BIN)kmeans_mpi1 $(SRC)kmeans.c \
+						  $(SRC)kmeans_config.c $(SRC)kmeans_support.c $(SRC)kmeans_sequential.c \
+ 						  $(SRC)kmeans_mpi1_impl.c \
+						  $(SRC)csvhelper.c $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)
+
+#kmeans_mpi1:4
+#	$(MPICC) $(CXXFLAGS) -o $(BIN)kmeans_mpi1 $(SRC)kmeans_mpi.c \
+#						  $(SRC)kmeans_config.c $(SRC)kmeans_support.c $(SRC)kmeans_sequential.c \
+# 						  $(SRC)csvhelper.c $(MPI_INC) $(HEADERS) $(LIBS)
 
 mpitest:
 	$(MPICC) $(CXXFLAGS) -o $(BIN)mpitest $(EXP)mpi_test.c $(MPI_INC) $(MPI_LIB) $(HEADERS) $(LIBS)

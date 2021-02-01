@@ -53,4 +53,25 @@ struct kmeans_metrics {
     int num_processors; // number of processors that mpi is running on
 };
 
+struct kmeans_timing {
+    double main_start_time;
+    double main_stop_time;
+    double iteration_start;
+    double iteration_start_assignment;
+    double iteration_stop_assignment;
+    double iteration_assignment_seconds;
+    double iteration_start_centroids;
+    double iteration_stop_centroids;
+    double iteration_centroids_seconds;
+    double accumulated_assignment_seconds;
+    double accumulated_centroids_seconds;
+    double max_iteration_seconds;
+    double elapsed_total_seconds;
+    int used_iterations;
+};
+
+extern int load_dataset(struct pointset *dataset);
+extern void main_loop(int max_iterations, struct kmeans_timing *timing);
+extern void main_finalize(struct pointset *dataset, struct kmeans_metrics *metrics, struct kmeans_timing *timing);
+
 #endif

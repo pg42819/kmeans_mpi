@@ -42,6 +42,29 @@ struct kmeans_metrics *new_kmeans_metrics(struct kmeans_config *config)
     return new_metrics;
 }
 
+/**
+ * Initialize a new timing object to hold iteration and total times
+ */
+struct kmeans_timing *new_kmeans_timing()
+{
+    struct kmeans_timing *new_timing = malloc(sizeof(struct kmeans_timing));
+    new_timing->main_start_time = 0;
+    new_timing->main_stop_time = 0;
+    new_timing->iteration_start = 0;
+    new_timing->iteration_start_assignment = 0;
+    new_timing->iteration_stop_assignment = 0;
+    new_timing->iteration_assignment_seconds = 0;
+    new_timing->iteration_start_centroids = 0;
+    new_timing->iteration_stop_centroids = 0;
+    new_timing->iteration_centroids_seconds = 0;
+    new_timing->accumulated_assignment_seconds = 0;
+    new_timing->accumulated_centroids_seconds = 0;
+    new_timing->max_iteration_seconds = 0;
+    new_timing->elapsed_total_seconds = 0;
+    new_timing->used_iterations = 0;
+    return new_timing;
+}
+
 void log_usage()
 {
     fprintf(stderr, "Output logging options:\n");
@@ -65,6 +88,12 @@ void kmeans_usage()
     fprintf(stderr, "    -t TEST.CSV compare result with TEST.CSV\n");
     fprintf(stderr, "    -m METRICS.CSV append metrics to this CSV file (creates it if it does not exist)\n");
     fprintf(stderr, "    -e --proper-distance measure Euclidean proper distance (slow) (defaults to faster square of distance)\n");
+    fprintf(stderr, "    --info for info level messages\n");
+    fprintf(stderr, "    --verbose for extra detail messages\n");
+    fprintf(stderr, "    --warn to suppress all but warning and error messages\n");
+    fprintf(stderr, "    --error to suppress all error messages\n");
+    fprintf(stderr, "    --debug for debug level messages\n");
+    fprintf(stderr, "    --trace for very fine grained debug messages\n");
     log_usage();
     fprintf(stderr, "\n");
     exit(1);

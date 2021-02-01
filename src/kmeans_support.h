@@ -1,5 +1,5 @@
-#ifndef KMEANS_EXTERN_H
-#define KMEANS_EXTERN_H
+#ifndef KMEANS_SUPPORT_H
+#define KMEANS_SUPPORT_H
 
 #include "kmeans.h"
 #include "csvhelper.h"
@@ -17,9 +17,7 @@ extern struct kmeans_config *kmeans_config;
 extern struct kmeans_config *new_kmeans_config();
 extern void parse_kmeans_cli(int argc, char *argv[], struct kmeans_config *new_config, enum log_level_t *new_log_level);
 extern struct kmeans_metrics *new_kmeans_metrics(struct kmeans_config *config);
-extern void simple_calculate_centroids(struct pointset *dataset, struct pointset *centroids);
-extern int simple_assign_clusters(struct pointset *dataset, struct pointset *centroids);
-extern void initialize_centroids(struct pointset *dataset, struct pointset *centroids);
+extern struct kmeans_timing *new_kmeans_timing();
 
 // basic pointset management
 extern struct pointset *allocate_pointset(int num_points);
@@ -56,10 +54,6 @@ extern char* valid_file(char opt, char *filename);
 extern int valid_count(char opt, char *arg);
 
 extern int test_results(char *test_file_name, struct pointset *dataset);
-
-extern void trace_assignment(struct pointset *dataset, int dataset_index,
-                             struct pointset *centroids, int centroid_index, double min_distance);
-
 // help with debugging OMP
 extern int omp_schedule_kind(int *chunk_size);
 extern void omp_debug(char *msg);

@@ -1,28 +1,30 @@
-#include <float.h>
+/**
+ * MPI Implementation of the K-Means Lloyds Algorithm
+ */
 #include "kmeans.h"
 #include "kmeans_support.h"
 #include "log.h"
+
+// MPI specific includes
 #ifdef __APPLE__
 #include "/opt/openmpi/include/mpi.h"
 #else
 #include <mpi.h>
 #endif
 #include "mpi_log.h"
+#include "kmeans_sequential.h"
 
-extern int load_dataset(struct pointset *dataset);
-extern void main_loop(int max_iterations, struct kmeans_metrics *metrics);
-extern void main_finalize(struct pointset *dataset, struct kmeans_metrics *metrics);
-extern void debug_setup(struct pointset *dataset, struct pointset *centroids);
-
+bool done = false;
 int mpi_rank = 0;
 int mpi_world_size = 0;
 int num_points_node = 0; // number of points handled by this node
 int num_points_total = 0;
 bool is_root;
 char node_label[20];
+
 struct pointset main_dataset;
 struct pointset node_dataset;
-struct pointset node_centroids;
+struct pointset centroids;
 
 void mpi_log_centroids(int level, char *label)
 {
@@ -31,32 +33,22 @@ void mpi_log_centroids(int level, char *label)
     char full_label[256];
     sprintf(full_label, "%s : %s", node_label, label);
     node_color();
-    print_centroids(stdout, &node_centroids, node_label);
+    print_centroids(stdout, &centroids, node_label);
     reset_color();
 }
 
 void mpi_log_dataset(int level, struct pointset *pointset, char *label)
 {
     if (log_level < level) return;
-    mpi_log(level, "Centroids: %s", label);
+    mpi_log(level, "Dataset: %s", label);
     char full_label[256];
-    sprintf(full_label, "%s : %s", node_label, label);
+    sprintf(full_label, "%s%s ", node_label, label);
     node_color();
     print_points(stdout, pointset, full_label);
     reset_color();
 }
 
-struct pointset allocate_pointset2(int num_points)
-{
-    struct pointset new_pointset;// = (struct pointset )malloc(sizeof(struct pointset));
-    new_pointset.x_coords = (double *)malloc(num_points * sizeof(double));
-    new_pointset.y_coords = (double *)malloc(num_points * sizeof(double));
-    new_pointset.cluster_ids = (int *)malloc(num_points * sizeof(int));
-    new_pointset.num_points = num_points;
-    return new_pointset;
-}
-
-void initialize(int max_points)
+void initialize(int max_points, struct kmeans_metrics *metrics)
 {
     // MPI PREP
     MPI_Status status;
@@ -83,11 +75,12 @@ void initialize(int max_points)
 
     mpi_log(debug, "Initializing dataset");
     if (is_root) {
+        metrics->num_processors=mpi_world_size;
         // for root we actually load the dataset, for others we just return the empty one
-        main_dataset = allocate_pointset2(max_points);
+        allocate_pointset_points(&main_dataset, max_points);
         mpi_log(debug, "Allocated %d point space", max_points);
         num_points_total = load_dataset(&main_dataset);
-        mpi_log(debug, "Loaded main dataset with %d points (confirmation: %d)", num_points_total, main_dataset.num_points);
+        mpi_log(info, "Loaded main dataset with %d points (confirmation: %d)", num_points_total, main_dataset.num_points);
 
         // number of points managed by each subnode is the total number divided by processes
         // plus 1 in case of remainder (number of points is not is not an even multiple of processors)
@@ -106,17 +99,16 @@ void initialize(int max_points)
     // Create a subnode dataset on each subnode, independent of the main dataset
     // Note: the root node also has a node_dataset since scatter will assign_clusters IT a subset
     //       of the total dataset along with all the other subnodes
-    node_dataset = allocate_pointset2(num_points_node);
+    allocate_pointset_points(&node_dataset, num_points_node);
     mpi_log(debug, "Allocated subnode dataset to %d points", num_points_node);
-    MPI_Barrier(MPI_COMM_WORLD);
+//    MPI_Barrier(MPI_COMM_WORLD);
 }
 
-
-int mpi_scatter_dataset()
+/**
+ * Distribute dataset as subsets to other nodes nodes - including a subset to the root node
+ */
+void mpi_scatter_dataset()
 {
-    // if root node, then the dataset is already populated
-    /* Distribute the work among all nodes. The data points itself will stay constant and
-        not change for the duration of the algorithm. */
     mpi_log(debug, "Starting scatter of %d points", num_points_node);
     MPI_Scatter(main_dataset.x_coords, num_points_node, MPI_DOUBLE,
                 node_dataset.x_coords, num_points_node, MPI_DOUBLE, 0, MPI_COMM_WORLD);
@@ -126,73 +118,38 @@ int mpi_scatter_dataset()
                 node_dataset.cluster_ids, num_points_node, MPI_INT, 0, MPI_COMM_WORLD);
     mpi_log(debug, "Scattered/Received %d points to/from other nodes. First x_coord is %.2f",
             num_points_node, node_dataset.x_coords[0]);
+    mpi_log_dataset(debug, &node_dataset, "After Scatter ");
 }
 
-int mpi_gather_dataset()
+/**
+ * Gather back subsets of data to the root node from the various processes (including the root)
+ */
+void mpi_gather_dataset()
 {
     mpi_log(debug, "Starting Gather of subset with %d points:", num_points_node);
-//    dbg_points(&node_dataset, "PRE gather ");//_node_label);
-    fprintf(stderr, "%sGO!!!!!!!\n\n", node_label);
     MPI_Gather(node_dataset.x_coords, num_points_node, MPI_DOUBLE,
                main_dataset.x_coords, num_points_node, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     MPI_Gather(node_dataset.y_coords, num_points_node, MPI_DOUBLE,
                main_dataset.y_coords, num_points_node, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     MPI_Gather(node_dataset.cluster_ids, num_points_node, MPI_INT,
                main_dataset.cluster_ids, num_points_node, MPI_INT, 0, MPI_COMM_WORLD);
-    fprintf(stderr, "%sDONE!!!!!!!\n\n", node_label);
-    mpi_log(debug, "Gathered/Sent %d points from other nodes. First x_coord is %.2f",
-            num_points_node, main_dataset.x_coords[0]);
+    mpi_log(debug, "Done Gathering");
+    mpi_log_dataset(debug, &main_dataset, "After Gather");
 }
 
+/**
+ * Broadcast the centroids values to all nodes
+ */
 void mpi_broadcast_centroids()
 {
-    mpi_log(trace, "Broadcasting centroids");
-    MPI_Bcast(node_centroids.x_coords, node_centroids.num_points, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Bcast(node_centroids.y_coords, node_centroids.num_points, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&node_centroids.num_points, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    mpi_log(trace, "DONE Broadcasting centroids");
+    mpi_log(debug, "Broadcasting centroids");
+    MPI_Bcast(centroids.x_coords, centroids.num_points, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(centroids.y_coords, centroids.num_points, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&centroids.num_points, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    mpi_log(debug, "DONE Broadcasting centroids");
     mpi_log_centroids(trace, "after broadcast");
 }
 
-int lowlevel_assign_clusters(int num_points, double *x_coords, double *y_coords,
-                             int num_clusters, double *centroid_x_coords, double *centroid_y_coords,
-                             int *cluster_ids)
-{
-//    TRACE("Starting low level assignment");
-    mpi_log(trace, "Starting low level assignment");
-    int cluster_changes = 0;
-
-    for (int n = 0; n < num_points; ++n) {
-        double point_x = x_coords[n];
-        double point_y = y_coords[n];
-        double min_distance = DBL_MAX; // init the min distance to a big number
-        int closest_cluster = -1;
-        for (int k = 0; k < num_clusters; ++k) {
-            double centroid_x = centroid_x_coords[k];
-            double centroid_y = centroid_y_coords[k];
-            // calc the distance passing pointers to points since the distance does not modify them
-            double distance_from_centroid = euclidean_distance(centroid_x, centroid_y, point_x, point_y);
-            if (distance_from_centroid < min_distance) {
-                min_distance = distance_from_centroid;
-                closest_cluster = k;
-//                TRACE("Closest cluster to point %d is %d", n, k);
-                mpi_log(trace, "Closest cluster to point %d is %d", n, k);
-            }
-        }
-        // if the point was not already in the closest cluster, move it there and count changes
-        if (cluster_ids[n] != closest_cluster) {
-            cluster_ids[n] = closest_cluster;
-            cluster_changes++;
-            mpi_log(trace, "Assigning (%.2f,%.2f) to cluster %d with centroid (%.2f,%.2f)",
-                           point_x, point_y, closest_cluster,
-                           centroid_x_coords[closest_cluster], centroid_y_coords[closest_cluster]);
-//            TRACE("Assigning (%s) to cluster %d with centroid (%s) d = %f\n",
-//                  p_to_s(dataset, n),  closest_cluster, p_to_s(centroids, closest_cluster), min_distance);
-        }
-    }
-    TRACE("Leaving simple assignment with %d cluster changes", cluster_changes);
-    return cluster_changes;
-}
 /**
  * Assigns each point in the dataset to a cluster based on the distance from that cluster.
  *
@@ -203,31 +160,24 @@ int lowlevel_assign_clusters(int num_points, double *x_coords, double *y_coords,
 int assign_clusters()
 {
     mpi_log(trace, "Starting assign_clusters with %d datapoints", node_dataset.num_points);
-
-//  for (int i = 0; i < 20; ++i) {
-//     fprintf(stderr, "waiting while you attach a debugger");
-//      sleep(1);
-//  }
     mpi_scatter_dataset();
+
     mpi_log(trace, "Calling simple_assign_clusters with node dataset at %d of size %d", &node_dataset, node_dataset.num_points);
-//    int reassignments = simple_assign_clusters(&node_dataset, &node_centroids);
-    int reassignments = lowlevel_assign_clusters(node_dataset.num_points, node_dataset.x_coords, node_dataset.y_coords,
-                                                 node_centroids.num_points, node_centroids.x_coords, node_centroids.y_coords,
-                                                 node_dataset.cluster_ids);
-    mpi_log(trace, "Returned from simple-assign_clusters after %d cluster reassignments", reassignments);
+    int total_reassignments = 0;
+    int node_reassignments = simple_assign_clusters(&node_dataset, &centroids);
+
+    MPI_Reduce(&node_reassignments, &total_reassignments, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    mpi_log(trace, "Returned from simple_assign_clusters with %d node, %d total cluster reassignments",
+            node_reassignments, total_reassignments);
     mpi_gather_dataset();
-    // TODO barrier probably not necessary due to gather - get rid of it when all else is working
-//    MPI_Barrier(MPI_COMM_WORLD);
-    mpi_log(trace, "Leaving assign_clusters with %d changes", reassignments);
-    return reassignments;
+    mpi_log(trace, "Leaving assign_clusters with %d changes", total_reassignments);
+    return total_reassignments;
 }
 
 /**
  * Calculates new centroids for the clusters of the given dataset by finding the
  * mean x and y coordinates of the current members of the cluster for each cluster.
- *
- * @param dataset set of all points with current cluster assignments
- * @param centroids array to hold the centroids - already allocated
  */
 void calculate_centroids()
 {
@@ -237,7 +187,7 @@ void calculate_centroids()
         mpi_log_centroids(trace, "pre-calc-centroids");
         mpi_log_dataset(trace, &main_dataset, "pre-calc-centroids");
 
-        simple_calculate_centroids(&main_dataset, &node_centroids);
+        simple_calculate_centroids(&main_dataset, &centroids);
         mpi_log_centroids(trace, "post-calc-centroids");
     }
 
@@ -248,47 +198,88 @@ void calculate_centroids()
 void initialize_representatives(int num_clusters)
 {
     // all nodes need a centroids point set
-    node_centroids = allocate_pointset(num_clusters);
+    allocate_pointset_points(&centroids, num_clusters);
 
     if (is_root) {
         mpi_log(debug, "Initialize centroids in root node (%d)", mpi_rank);
-        // TODO move initialize_centroids to support
-        initialize_centroids(&main_dataset, &node_centroids);
+        initialize_centroids(&main_dataset, &centroids);
     }
     mpi_broadcast_centroids();
-
-    if (is_root) {
-        debug_setup(&main_dataset, &node_centroids);// print dbg info
-    }
 }
+
 
 bool is_done(int changes, int iterations, int max_iterations)
 {
     // only root completes the loop
     if (is_root) {
         if (changes == 0 || iterations >= max_iterations) {
-            return true;
+            mpi_log(info, "ROOT is done with %d changes after %d iterations", changes, iterations);
+            done = true;
         }
     }
-    return false;
+    mpi_log(debug, "Broadcasting done");
+    MPI_Bcast(&done, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+    mpi_log(debug, "AFter broadcast done: %d", done);
+    return done;
 }
 
-void run(int max_iterations, struct kmeans_metrics *metrics)
+/**
+ * All timing is performed only in the root process
+ * TODO consider adding process-specific timing and reducing to totals for better metrics
+ */
+void start_main_timing(struct kmeans_timing *timing)
 {
-    mpi_log(debug, "Root: Running main loop");
-    main_loop(max_iterations, metrics);
-    mpi_log(debug, "Root: Main loop completed");
+    if (is_root) {
+        simple_start_main_timing(timing);
+    }
 }
 
-void finalize(struct kmeans_metrics *metrics)
+void start_iteration_timing(struct kmeans_timing *timing)
 {
-    MPI_Barrier(MPI_COMM_WORLD);
+    if (is_root) {
+        simple_start_iteration_timing(timing);
+    }
+}
+
+void between_assignment_centroids(struct kmeans_timing *timing)
+{
+    if (is_root) {
+        simple_between_assignment_centroids(timing);
+    }
+}
+
+void end_iteration_timing(struct kmeans_timing *timing)
+{
+    if (is_root) {
+        simple_end_iteration_timing(timing);
+    }
+}
+
+void end_main_timing(struct kmeans_timing *timing, int iterations)
+{
+    if (is_root) {
+        simple_end_main_timing(timing, iterations);
+    }
+}
+
+void run(int max_iterations, struct kmeans_timing *timing)
+{
+    mpi_log(debug, "Running main loop");
+    main_loop(max_iterations, timing);
+    mpi_log(debug, "Main loop completed");
+}
+
+void finalize(struct kmeans_metrics *metrics, struct kmeans_timing *timing)
+{
+//    MPI_Barrier(MPI_COMM_WORLD); barrier not needed
     mpi_log(debug, "Finalizing");
     if (is_root) {
         metrics->num_points = num_points_total;
-        main_finalize(&main_dataset, metrics);
+        main_finalize(&main_dataset, metrics, timing);
     }
     // else the subnodes do not run the main loop but all mpi nodes must finalize
     MPI_Finalize();
 }
+
+
 
