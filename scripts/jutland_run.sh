@@ -2,7 +2,7 @@
 # Run the kmeans program multiple times and collect results
 if [ -z "$KMEANS_HOME" ]; then
   current_dir=$( cd "$( dirname ${BASH_SOURCE[0]} )" && pwd )
-  export KMEANS_HOME=$( dirname ${current_dir} )
+  KMEANS_HOME=$( dirname ${current_dir} )
 fi
 data_dir=${KMEANS_HOME}/data
 out_dir=${KMEANS_HOME}/outdata
@@ -35,50 +35,44 @@ multirun() {
 
   # simple run first
   local program=${kmeans_simple}
-  local full_label="${label} simple"
-  singlerun
+  local full_label="${label}_simple"
+#  singlerun
 
-  for ((prognum=1; prognum<=num_progs; prognum++)) do
-    progname=kmeans_omp${prognum}
+  for ((prognum=min_prog; prognum<=max_prog; prognum++)) do
+    progname="${prog_base}${prognum}"
     program=${bin_dir}/${progname}
-    for ((t=0; t<=max_threads; t+=thread_step)) do
+    for ((t=min_threads; t<=max_threads; t+=thread_step)) do
       # always start at 1 then jump evenly
       if [ "$t" -eq "0" ];then
         threads=1
       else
         threads=$t
       fi
-
-      #echo "THREAD_COUNT $threads  from 1 to $max_threads stepping $thread_step"
-      # subtract 1 for round numbers
-      export OMP_NUM_THREADS=$threads
-      #echo "OMP_NUM_THREADS: $OMP_NUM_THREADS"
-      local omp_label="${label} ${progname} t=$threads"
-      local kind
-      for kind in dynamic static guided; do
-        for ((c=0; c<=max_chunks; c+=chunks_step)) do
-           # always start at 1 then jump evenly
-          if [ "$c" -eq "0" ];then
-            chunk_size=1
-          else
-            chunk_size=$c
-          fi
-          export OMP_SCHEDULE=$kind,$chunk_size
-          full_label="${omp_label}; schedule=$kind;$chunk_size"
-          #echo "RUNNING $full_label"
-          singlerun
-        done
-      done
+      local full_label="${label}__${progname}__n_$threads"
+      echo "RUNNING $full_label"
+      singlerun
     done
   done
 }
 
 singlerun() {
+    echo "RUNNING $full_label"
+    command="mpirun -n ${threads} ${program} --${debug_level} -f ${indata} ${out_arg} \
+           -m ${metrics_file} ${test_args} -k ${num_clusters} -n ${max_points} \
+            -i ${max_iterations} -l ${full_label}"
+    echo "About to: ${command}"
+    if $interactive; then
+      askcontinue
+    fi
+    if [ -z ${KMEANS_RUN_NOOP+x} ]; then
+      ${command}
+    else
+      echo "DRY RUN. Not doing anything"
+    fi
+
   # run the program with -s for silent
-  "${program}" -s -f "${indata}" ${out_arg} -m "${metrics_file}" ${test_args} \
-      -k ${num_clusters} -n ${max_points} -i ${max_iterations} -l "${full_label}"
-  #echo "${program}" -f "${indata}" -o "${outdata}" -m "${metrics_file}" ${test_args} \
-   #   -k ${num_clusters} -n ${max_points} -i ${max_iterations} -l "${full_label}"
+#  "${program}" -s -f "${indata}" ${out_arg} -m "${metrics_file}" ${test_args} \
+#      -k ${num_clusters} -n ${max_points} -i ${max_iterations} -l "${full_label}"
 }
 
 askcontinue() {
@@ -102,29 +96,50 @@ run_jutland() {
   # out="jutland_${size}_clustered.csv"
   test="jutland_${size}_clustered_knime.csv"
   # Metrics go in same file to build a full result set
-  num_clusters=22
 
-  min_threads=0
-  max_threads=200
-  thread_step=20
-
-  min_chunks=0
-  max_chunks=200
-  chunks_step=20
+  min_threads=${KMEANS_PROCESSES_MIN:-0}
+  max_threads=${KMEANS_PROCESSES_MAX:-200}
+  thread_step=${KMEANS_PROCESSES_STEP:-20}
 
   label=jutland_${size}
-  # run all: kmeans_omp1 and kmeans_omp2
-  num_progs=2
+  min_prog=${KMEANS_PROG_NUM_MIN:-1}
+  # default max == min prog
+  max_prog=${KMEANS_PROG_NUM_MAX:-1}
   multirun
 }
 
-metrics_file=${metrics_dir}/"jutland_metrics.csv"
+debug_level=${KMEANS_DEBUG:-debug}
+num_clusters=${KMEANS_CLUSTERS:-3}
+max_iterations=${KMEANS_MAX_ITERATIONS:-20}
+prog_base=${KMEANS_PROG_BASE:-kmeans_mpi}
+report_name=${KMEANS_REPORT:-jutland_metrics.csv}
+
+if [ -z ${KMEANS_RUN_INTERACTIVE+x} ]; then
+  interactive=false
+else
+  interactive=true
+fi
+
+if [ -z ${KMEANS_OUT_BASE+x} ]; then
+  out=""
+else
+  out=${KMEANS_OUT_BASE}
+fi
+
+metrics_file=${metrics_dir}/${report_name}
 if [ -f "${metrics_file}" ]; then
   echo "Found an existing metrics file at ${metrics_file}"
   askcontinue "Do you want to delete the report at ${metrics_file} and start clean?" && rm -f $metrics_file
 fi
 
-run_jutland 50 100
-run_jutland 500 1000
-run_jutland 400k 1000000
 
+if [ -z ${KMEANS_JUTLAND_SIZE+x} ]; then
+  run_jutland 50 100
+  #run_jutland 500 1000
+  #run_jutland 400k 1000000
+else
+  run_jutland ${KMEANS_JUTLAND_SIZE} ${KMEANS_MAX_POINTS}
+fi
+
+askcontinue "Want to see the results in ${metrics_file}?"
+cat ${metrics_file}

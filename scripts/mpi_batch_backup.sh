@@ -45,16 +45,16 @@ multirun() {
       echo "OMP_NUM_THREADS: $OMP_NUM_THREADS"
       local omp_label="${label}_${progname}${thread_label}"
       local order
-        for c in "${matrix_sizes[@]}"; do
+        for c in "${dataset_sizes[@]}"; do
           if [ "$c" -eq "0" ];then
-            matrix_size=1
+            dataset_size=1
           else
-            matrix_size=$c
+            dataset_size=$c
           fi
           echo "- - - - LOOP matrix-size # $c "
 #         full_label="${omp_label}; schedule=$order;$chunk_size"
           local transpose_arg=""
-          local sub_label="${omp_label}__size_${matrix_size}__order_${order}${block_label}${papi_label}"
+          local sub_label="${omp_label}__size_${dataset_size}__order_${order}${block_label}${papi_label}"
           full_label="${sub_label}"
           echo "- - - - - WITHOUT transpose"
           singlerun
@@ -78,7 +78,7 @@ singlerun() {
   for ((run=1; run<=${repeats}; run++)) do
     echo "RUNNING $full_label repetition $run of $repeats"
     run_label="${full_label}__rep_$run"
-    to_run="${program} --silent --giga ${order_arg} -s ${matrix_size} ${debug_arg} ${verbose_arg} ${block_arg} ${papi_arg} ${out_arg} -m ${metrics_file} ${transpose_arg} ${test_args} -l ${run_label}"
+    to_run="${program} --silent --giga ${order_arg} -s ${dataset_size} ${debug_arg} ${verbose_arg} ${block_arg} ${papi_arg} ${out_arg} -m ${metrics_file} ${transpose_arg} ${test_args} -l ${run_label}"
     echo "About to: ${to_run}"
     if $interactive; then
       askcontinue
@@ -102,12 +102,12 @@ askcontinue() {
 	return 1
 }
 
-run_matrix() {
+run_mpi() {
   # Metrics go in same file to build a full result set
   min_threads=${KMEANS_RUN_THREADS_MIN:-0}
   max_threads=${KMEANS_RUN_THREADS_MAX:-0}
   thread_step=${KMEANS_RUN_THREADS_STEP:-20} # must be non-zero to be non infinite
-#  matrix_sizes=( "$1" "$2" "$3" "$4" )
+#  dataset_sizes=( "$1" "$2" "$3" "$4" )
 
   label=matrix
   # run all: matrix_omp1 and matrix_omp2
@@ -145,13 +145,6 @@ else
   interactive=true
 fi
 
-if [ -z ${KMEANS_RUN_NO_TRANSPOSE+x} ]; then
-  dotranspose=true
-else
-  echo "SKIPPING transpose"
-  dotranspose=false
-fi
-
 if [ -z ${KMEANS_RUN_VERBOSE+x} ]; then
   verbose_arg=""
 else
@@ -180,6 +173,18 @@ else
   repeats=1
 fi
 
+#env_processes=${KMEANS_PROCESSES:-1}
+#processes=${1:-${KMEANS_PROCESSES}}
+debug_level=${KMEANS_DEBUG:-debug}
+infile=${KMEANS_IN:-six_points.csv}
+testfile=${KMEANS_TEST:-six_points_clustered_csv}
+clusters=${KMEANS_CLUSTERS:-3}
+max_iterations=${KMEANS_MAX_ITERATIONS:-20}
+max_points=${KMEANS_MAX_POINTS:-10}
+prog_num=${KMEANS_PROG_NUM:-1}
+prog_base=${KMEANS_PROG_BASE:-kmeans_mpi}
+prog="${prog_base}${prog_num}"
+#
 report_name=${KMEANS_RUN_REPORT:-1}
 metrics_file=${KMEANS_METRICS_DIR}/"kmeans_metrics${report_name}.csv"
 
@@ -192,20 +197,20 @@ fi
 
 if [ -n "$*" ]; then
   echo "here"
-  matrix_sizes_arg="$@"
+  dataset_sizes_arg="$@"
 else
   if [ -n "${KMEANS_RUN_SIZES}" ]; then
     echo "here $KMEANS_RUN_SIZES"
-    matrix_sizes_arg="${KMEANS_RUN_SIZES}"
+    dataset_sizes_arg="${KMEANS_RUN_SIZES}"
   else
-    matrix_sizes_arg="3"
+    dataset_sizes_arg="3"
   fi
 fi
 
 
-matrix_sizes=( ${matrix_sizes_arg} )
+dataset_sizes=( ${matrix_sizes_arg} )
 #matrix_sizes="${matrix_sizes_arg}"
-run_matrix
+run_mpi
 
 askcontinue "Want to see the results?"
 cat ${metrics_file}

@@ -17,23 +17,33 @@
  * @param num_points size of the pointset to create
  * @return a pointer to a newly allocated pointset
  */
-struct pointset allocate_pointset(int num_points)
+struct pointset *allocate_pointset(int num_points)
 {
-    struct pointset new_pointset;//= (struct pointset )malloc(sizeof(struct pointset));
-//    if (new_pointset == NULL) {
-//        FAIL("Failed to allocate a new pointset");
-//    }
+    struct pointset *new_pointset = (struct pointset *)malloc(sizeof(struct pointset));
 
-    new_pointset.x_coords = (double *)malloc(num_points * sizeof(double));
-    new_pointset.y_coords = (double *)malloc(num_points * sizeof(double));
-    new_pointset.cluster_ids = (int *)malloc(num_points * sizeof(int));
-
-    if (new_pointset.x_coords == NULL || new_pointset.y_coords == NULL || new_pointset.cluster_ids == NULL) {
-        FAIL("Failed to allocate coordinates for a pointset of size %d", num_points);
-    }
-    new_pointset.num_points = num_points;
+    allocate_pointset_points(new_pointset, num_points);
     return new_pointset;
 }
+
+/**
+ * Allocate points in a pointset struct that already exists
+ * Useful for creating static structs in the module or on a function stack
+ * @param new_pointset pointer to existing pointset struct
+ * @param num_points number of points to allocate
+ */
+void allocate_pointset_points(struct pointset *new_pointset, int num_points)
+{
+    new_pointset->x_coords = (double *)malloc(num_points * sizeof(double));
+    new_pointset->y_coords = (double *)malloc(num_points * sizeof(double));
+    new_pointset->cluster_ids = (int *)malloc(num_points * sizeof(int));
+
+    if (new_pointset->x_coords == NULL || new_pointset->y_coords == NULL || new_pointset->cluster_ids == NULL) {
+        FAIL("Failed to allocate coordinates for a pointset of size %d", num_points);
+    }
+
+    new_pointset->num_points = num_points;
+}
+
 
 /**
  * Fail and exit if the index is outside the bounds of the pointset or the pointset is null
@@ -328,6 +338,33 @@ void print_metrics(FILE *out, struct kmeans_metrics *metrics)
 }
 
 /**
+ * Summarize the results of the run with timing numbers in a single row to go in a csv file
+ * @param out output file pointer
+ * @param metrics metrics object
+ */
+void summarize_metrics(FILE *out, struct kmeans_metrics *metrics)
+{
+    char *test_results = "untested";
+    switch (metrics->test_result) {
+        case 1:
+            test_results = "passed";
+            break;
+        case -1:
+            test_results = "FAILED!";
+            break;
+    }
+    fprintf(out, "Run Label       : %s\n"
+                 "Dataset size  N : %d\n"
+                 "Num Clusters  K : %d\n"
+                 "Total seconds   : %f\n"
+                 "Iterations      : %d\n"
+                 "Num Processors  : %d\n"
+                 "Test            : %s\n",
+            metrics->label, metrics->num_points, metrics->num_clusters, metrics->total_seconds,
+            metrics->used_iterations, metrics->num_processors, test_results);
+}
+
+/**
  * Read 2-dimensional points from the CSV file with headers.
  *
  * @param csv_file file pointer to the input file
@@ -466,10 +503,10 @@ int test_results(char *test_file_name, struct pointset *dataset)
 {
     int result = 1;
     int num_points = dataset->num_points;
-    struct pointset testset = allocate_pointset(num_points + 10);
+    struct pointset *testset = allocate_pointset(num_points + 10);
     int test_dimensions;
     static char* test_headers[3];
-    int num_test_points = read_csv_file(test_file_name, &testset, num_points, test_headers, &test_dimensions);
+    int num_test_points = read_csv_file(test_file_name, testset, num_points, test_headers, &test_dimensions);
     if (num_test_points < num_points) {
         WARN("Test failed. The test dataset has only %d records, but needs at least %d",
              num_test_points, num_points);
@@ -477,11 +514,11 @@ int test_results(char *test_file_name, struct pointset *dataset)
     }
     else {
         for (int n = 0; n < num_points; ++n) {
-            if (same_point(&testset, dataset, n)) {
-                if (!same_cluster(&testset, dataset, n)) {
+            if (same_point(testset, dataset, n)) {
+                if (!same_cluster(testset, dataset, n)) {
                     // points match but assigned to different clusters
                         WARN("Test failure at %d: (%s) result cluster: %d does not match test: %d\n",
-                                n + 1, p_to_s(dataset, n), dataset->cluster_ids[n], testset.cluster_ids[n]);
+                                n + 1, p_to_s(dataset, n), dataset->cluster_ids[n], testset->cluster_ids[n]);
                     result = -1;
                     break; // give up comparing
                 }
@@ -493,7 +530,7 @@ int test_results(char *test_file_name, struct pointset *dataset)
             else {
                 // points themselves are different
                 WARN("Test failure at %d: %s does not match test point: %s\n",
-                     n+1, p_to_s(dataset, n), p_to_s(&testset, n));
+                     n+1, p_to_s(dataset, n), p_to_s(testset, n));
                 result = -1;
                 break; // give up comparing
             }

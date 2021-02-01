@@ -22,7 +22,8 @@ extern int simple_assign_clusters(struct pointset *dataset, struct pointset *cen
 extern void initialize_centroids(struct pointset *dataset, struct pointset *centroids);
 
 // basic pointset management
-extern struct pointset allocate_pointset(int num_points);
+extern struct pointset *allocate_pointset(int num_points);
+extern void allocate_pointset_points(struct pointset *pointset, int num_points);
 extern void check_bounds(struct pointset *pointset, int index);
 extern void set_point(struct pointset *pointset, int index, double x, double y, int cluster_id);
 extern void set_cluster(struct pointset *pointset, int index, int cluster_id);
@@ -35,7 +36,6 @@ extern double point_distance(struct pointset *pointset1, int index1, struct poin
 extern const char *p_to_s(struct pointset *dataset, int index);
 extern double euclidean_distance(double x2, double y2, double x1, double y1);
 extern void kmeans_usage();
-extern void debug_points(struct pointset *dataset, const char *label);
 extern void print_points(FILE *out, struct pointset *dataset, const char *label);
 extern void print_headers(FILE *out, char **headers, int dimensions);
 extern void print_metrics_headers(FILE *out);
@@ -44,6 +44,7 @@ extern void print_centroids(FILE *out, struct pointset *centroids, char *label);
 
 extern void debug_setup(struct pointset *dataset, struct pointset *centroids);
 extern void print_metrics(FILE *out, struct kmeans_metrics *metrics);
+extern void summarize_metrics(FILE *out, struct kmeans_metrics *metrics);
 extern int read_csv_file(char* csv_file_name, struct pointset *dataset, int max_points, char *headers[], int *dimensions);
 extern int read_csv(FILE* csv_file, struct pointset *dataset, int max_points, char *headers[], int *dimensions);
 extern void write_csv_file(char *csv_file_name, struct pointset *dataset, char *headers[], int dimensions);

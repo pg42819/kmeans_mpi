@@ -15,7 +15,7 @@
 bool done = false;
 int mpi_rank = 0;
 int mpi_world_size = 0;
-int num_points_subnode = 0; // number of points handled by this node
+int num_points_node = 0; // number of points handled by this node
 int num_points_total = 0;
 bool is_root;
 char node_label[20];
@@ -50,25 +50,15 @@ void mpi_log_dataset(int level, struct pointset *pointset, char *label)
     reset_color();
 }
 
-struct pointset allocate_pointset2(int num_points)
+int load_dataset(struct pointset *dataset)
 {
-    struct pointset new_pointset;// = (struct pointset )malloc(sizeof(struct pointset));
-    new_pointset.x_coords = (double *)malloc(num_points * sizeof(double));
-    new_pointset.y_coords = (double *)malloc(num_points * sizeof(double));
-    new_pointset.cluster_ids = (int *)malloc(num_points * sizeof(int));
-    new_pointset.num_points = num_points;
-    return new_pointset;
-}
-
-int load_dataset(struct pointset *dataset) {
     char *csv_file_name = valid_file('f', kmeans_config->in_file);
     int num_points = read_csv_file(csv_file_name, dataset, kmeans_config->max_points, headers, &dimensions);
     DEBUG("Loaded %d points from the dataset file at %s", num_points, csv_file_name);
     return num_points;
 }
 
-
-void initialize(int max_points)
+void initialize(int max_points, struct kmeans_metrics *metrics)
 {
     // MPI PREP
     MPI_Status status;
@@ -95,70 +85,71 @@ void initialize(int max_points)
 
     mpi_log(debug, "Initializing dataset");
     if (is_root) {
+        metrics->num_processors=mpi_world_size;
         // for root we actually load the dataset, for others we just return the empty one
-        main_dataset = allocate_pointset2(max_points);
+        allocate_pointset_points(&main_dataset, max_points);
         mpi_log(debug, "Allocated %d point space", max_points);
         num_points_total = load_dataset(&main_dataset);
-        mpi_log(debug, "Loaded main dataset with %d points (confirmation: %d)", num_points_total, main_dataset.num_points);
+        mpi_log(info, "Loaded main dataset with %d points (confirmation: %d)", num_points_total, main_dataset.num_points);
 
         // number of points managed by each subnode is the total number divided by processes
         // plus 1 in case of remainder (number of points is not is not an even multiple of processors)
-        num_points_subnode = num_points_total / mpi_world_size;
+        num_points_node = num_points_total / mpi_world_size;
         if (num_points_total % mpi_world_size > 0) {
-            num_points_subnode += 1;
+            num_points_node += 1;
             mpi_log(debug, "Calculated subnode dataset size: %d / %d (+ 1?) = %d",
-                    num_points_total, mpi_world_size, num_points_subnode);
+                    num_points_total, mpi_world_size, num_points_node);
         }
     }
 
     // broadcast from root to sub nodes, or receive to make the calculation from root
-    MPI_Bcast(&num_points_subnode, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    mpi_log(debug, "Got %d as num_points_subnode after broadcast", num_points_subnode);
+    MPI_Bcast(&num_points_node, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    mpi_log(debug, "Got %d as num_points_subnode after broadcast", num_points_node);
 
     // Create a subnode dataset on each subnode, independent of the main dataset
     // Note: the root node also has a node_dataset since scatter will assign_clusters IT a subset
     //       of the total dataset along with all the other subnodes
-    node_dataset = allocate_pointset2(num_points_subnode);
-    mpi_log(debug, "Allocated subnode dataset to %d points", num_points_subnode);
-    MPI_Barrier(MPI_COMM_WORLD);
+    allocate_pointset_points(&node_dataset, num_points_node);
+    mpi_log(debug, "Allocated subnode dataset to %d points", num_points_node);
+//    MPI_Barrier(MPI_COMM_WORLD);
 }
 
+/**
+ * Distribute dataset as subsets to other nodes nodes - including a subset to the root node
+ */
 void mpi_scatter_dataset()
 {
-    // if root node, then the dataset is already populated
-    /* Distribute the work among all nodes. The data points itself will stay constant and
-        not change for the duration of the algorithm. */
-    mpi_log(debug, "Starting scatter of %d points", num_points_subnode);
-    MPI_Scatter(main_dataset.x_coords, num_points_subnode, MPI_DOUBLE,
-                node_dataset.x_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Scatter(main_dataset.y_coords, num_points_subnode, MPI_DOUBLE,
-                node_dataset.y_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Scatter(main_dataset.cluster_ids, num_points_subnode, MPI_INT,
-               node_dataset.cluster_ids, num_points_subnode, MPI_INT, 0, MPI_COMM_WORLD);
+    mpi_log(debug, "Starting scatter of %d points", num_points_node);
+    MPI_Scatter(main_dataset.x_coords, num_points_node, MPI_DOUBLE,
+                node_dataset.x_coords, num_points_node, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Scatter(main_dataset.y_coords, num_points_node, MPI_DOUBLE,
+                node_dataset.y_coords, num_points_node, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Scatter(main_dataset.cluster_ids, num_points_node, MPI_INT,
+                node_dataset.cluster_ids, num_points_node, MPI_INT, 0, MPI_COMM_WORLD);
     mpi_log(debug, "Scattered/Received %d points to/from other nodes. First x_coord is %.2f",
-          num_points_subnode, node_dataset.x_coords[0]);
+            num_points_node, node_dataset.x_coords[0]);
     mpi_log_dataset(debug, &node_dataset, "After Scatter ");
 }
 
+/**
+ * Gather back subsets of data to the root node from the various processes (including the root)
+ */
 void mpi_gather_dataset()
 {
-    mpi_log(debug, "Starting Gather of subset with %d points:", num_points_subnode);
-//    dbg_points(&node_dataset, "PRE gather ");//_node_label);
-//    fprintf(stderr, "%sGO!!!!!!!\n\n", node_label);
-    MPI_Gather(node_dataset.x_coords, num_points_subnode, MPI_DOUBLE,
-               main_dataset.x_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather(node_dataset.y_coords, num_points_subnode, MPI_DOUBLE,
-               main_dataset.y_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather(node_dataset.cluster_ids, num_points_subnode, MPI_INT,
-               main_dataset.cluster_ids, num_points_subnode, MPI_INT, 0, MPI_COMM_WORLD);
-//    fprintf(stderr, "%sDONE!!!!!!!\n\n", node_label);
+    mpi_log(debug, "Starting Gather of subset with %d points:", num_points_node);
+    MPI_Gather(node_dataset.x_coords, num_points_node, MPI_DOUBLE,
+               main_dataset.x_coords, num_points_node, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gather(node_dataset.y_coords, num_points_node, MPI_DOUBLE,
+               main_dataset.y_coords, num_points_node, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gather(node_dataset.cluster_ids, num_points_node, MPI_INT,
+               main_dataset.cluster_ids, num_points_node, MPI_INT, 0, MPI_COMM_WORLD);
     mpi_log(debug, "Done Gathering");
     mpi_log_dataset(debug, &main_dataset, "After Gather");
-//    mpi_log_dataset()
-//    mpi_log(debug, "Gathered/Sent %d points from other nodes. First x_coord is %.2f",
-//            num_points_subnode, main_dataset.x_coords[0]);
 }
 
+/**
+ * Broadcast the centroids values to all nodes
+ */
 void mpi_broadcast_centroids()
 {
     mpi_log(debug, "Broadcasting centroids");
@@ -180,7 +171,7 @@ int assign_clusters()
 {
     mpi_log(trace, "Starting assign_clusters with %d datapoints", node_dataset.num_points);
     mpi_scatter_dataset();
-    MPI_Barrier(MPI_COMM_WORLD);
+
     mpi_log(trace, "Calling simple_assign_clusters with node dataset at %d of size %d", &node_dataset, node_dataset.num_points);
     int total_reassignments = 0;
     int node_reassignments = simple_assign_clusters(&node_dataset, &node_centroids);
@@ -190,8 +181,6 @@ int assign_clusters()
     mpi_log(trace, "Returned from simple_assign_clusters with %d node, %d total cluster reassignments",
             node_reassignments, total_reassignments);
     mpi_gather_dataset();
-    // TODO barrier probably not necessary due to gather - get rid of it when all else is working
-    MPI_Barrier(MPI_COMM_WORLD);
     mpi_log(trace, "Leaving assign_clusters with %d changes", total_reassignments);
     return total_reassignments;
 }
@@ -222,7 +211,7 @@ void calculate_centroids()
 void initialize_representatives(int num_clusters)
 {
     // all nodes need a centroids point set
-    node_centroids = allocate_pointset(num_clusters);
+    allocate_pointset_points(&node_centroids, num_clusters);
 
     if (is_root) {
         mpi_log(debug, "Initialize centroids in root node (%d)", mpi_rank);
@@ -287,7 +276,7 @@ void main_loop(int max_iterations, struct kmeans_metrics *metrics) {
         calculate_centroids();
         mpi_log(debug, "returned from calculate_centroids");
 
-        MPI_Barrier(MPI_COMM_WORLD);
+//        MPI_Barrier(MPI_COMM_WORLD);
         if (is_root) {
             mpi_log(debug, "Calculating time and setting metrics on root");
             double centroids_seconds = omp_get_wtime() - start_centroids;
@@ -344,6 +333,11 @@ void main_finalize(struct pointset *dataset, struct kmeans_metrics *metrics)
         print_points(stdout, &main_dataset, "Final ");
     }
 
+    if (IS_INFO) {
+        summarize_metrics(stdout, metrics);
+        printf("\n");
+    }
+
     if (IS_WARN) {
         print_metrics_headers(stdout);
         print_metrics(stdout, metrics);
@@ -378,14 +372,14 @@ int main(int argc, char* argv [])
     kmeans_config = new_kmeans_config();
     parse_kmeans_cli(argc, argv, kmeans_config, &log_level);
 
+    // set up a metrics struct to hold timing and other info for comparison
+    struct kmeans_metrics *metrics = new_kmeans_metrics(kmeans_config);
+
     DEBUG("Initializing dataset");
-    initialize(kmeans_config->max_points);
+    initialize(kmeans_config->max_points, metrics);
 
     // K-Means Lloyds alorithm  Step 1: initialize the centroids
     initialize_representatives(kmeans_config->num_clusters);
-
-    // set up a metrics struct to hold timing and other info for comparison
-    struct kmeans_metrics *metrics = new_kmeans_metrics(kmeans_config);
 
     // run the main loop
     run(kmeans_config->max_iterations, metrics);

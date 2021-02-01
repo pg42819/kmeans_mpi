@@ -16,7 +16,7 @@ extern void debug_setup(struct pointset *dataset, struct pointset *centroids);
 
 int mpi_rank = 0;
 int mpi_world_size = 0;
-int num_points_subnode = 0; // number of points handled by this node
+int num_points_node = 0; // number of points handled by this node
 int num_points_total = 0;
 bool is_root;
 char node_label[20];
@@ -91,23 +91,23 @@ void initialize(int max_points)
 
         // number of points managed by each subnode is the total number divided by processes
         // plus 1 in case of remainder (number of points is not is not an even multiple of processors)
-        num_points_subnode = num_points_total / mpi_world_size;
+        num_points_node = num_points_total / mpi_world_size;
         if (num_points_total % mpi_world_size > 0) {
-            num_points_subnode += 1;
+            num_points_node += 1;
             mpi_log(debug, "Calculated subnode dataset size: %d / %d (+ 1?) = %d",
-                    num_points_total, mpi_world_size, num_points_subnode);
+                    num_points_total, mpi_world_size, num_points_node);
         }
     }
 
     // broadcast from root to sub nodes, or receive to make the calculation from root
-    MPI_Bcast(&num_points_subnode, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    mpi_log(debug, "Got %d as num_points_subnode after broadcast", num_points_subnode);
+    MPI_Bcast(&num_points_node, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    mpi_log(debug, "Got %d as num_points_subnode after broadcast", num_points_node);
 
     // Create a subnode dataset on each subnode, independent of the main dataset
     // Note: the root node also has a node_dataset since scatter will assign_clusters IT a subset
     //       of the total dataset along with all the other subnodes
-    node_dataset = allocate_pointset2(num_points_subnode);
-    mpi_log(debug, "Allocated subnode dataset to %d points", num_points_subnode);
+    node_dataset = allocate_pointset2(num_points_node);
+    mpi_log(debug, "Allocated subnode dataset to %d points", num_points_node);
     MPI_Barrier(MPI_COMM_WORLD);
 }
 
@@ -117,31 +117,31 @@ int mpi_scatter_dataset()
     // if root node, then the dataset is already populated
     /* Distribute the work among all nodes. The data points itself will stay constant and
         not change for the duration of the algorithm. */
-    mpi_log(debug, "Starting scatter of %d points", num_points_subnode);
-    MPI_Scatter(main_dataset.x_coords, num_points_subnode, MPI_DOUBLE,
-                node_dataset.x_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Scatter(main_dataset.y_coords, num_points_subnode, MPI_DOUBLE,
-                node_dataset.y_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Scatter(main_dataset.cluster_ids, num_points_subnode, MPI_INT,
-               node_dataset.cluster_ids, num_points_subnode, MPI_INT, 0, MPI_COMM_WORLD);
+    mpi_log(debug, "Starting scatter of %d points", num_points_node);
+    MPI_Scatter(main_dataset.x_coords, num_points_node, MPI_DOUBLE,
+                node_dataset.x_coords, num_points_node, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Scatter(main_dataset.y_coords, num_points_node, MPI_DOUBLE,
+                node_dataset.y_coords, num_points_node, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Scatter(main_dataset.cluster_ids, num_points_node, MPI_INT,
+                node_dataset.cluster_ids, num_points_node, MPI_INT, 0, MPI_COMM_WORLD);
     mpi_log(debug, "Scattered/Received %d points to/from other nodes. First x_coord is %.2f",
-          num_points_subnode, node_dataset.x_coords[0]);
+            num_points_node, node_dataset.x_coords[0]);
 }
 
 int mpi_gather_dataset()
 {
-    mpi_log(debug, "Starting Gather of subset with %d points:", num_points_subnode);
+    mpi_log(debug, "Starting Gather of subset with %d points:", num_points_node);
 //    dbg_points(&node_dataset, "PRE gather ");//_node_label);
     fprintf(stderr, "%sGO!!!!!!!\n\n", node_label);
-    MPI_Gather(node_dataset.x_coords, num_points_subnode, MPI_DOUBLE,
-               main_dataset.x_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather(node_dataset.y_coords, num_points_subnode, MPI_DOUBLE,
-               main_dataset.y_coords, num_points_subnode, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather(node_dataset.cluster_ids, num_points_subnode, MPI_INT,
-               main_dataset.cluster_ids, num_points_subnode, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Gather(node_dataset.x_coords, num_points_node, MPI_DOUBLE,
+               main_dataset.x_coords, num_points_node, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gather(node_dataset.y_coords, num_points_node, MPI_DOUBLE,
+               main_dataset.y_coords, num_points_node, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gather(node_dataset.cluster_ids, num_points_node, MPI_INT,
+               main_dataset.cluster_ids, num_points_node, MPI_INT, 0, MPI_COMM_WORLD);
     fprintf(stderr, "%sDONE!!!!!!!\n\n", node_label);
     mpi_log(debug, "Gathered/Sent %d points from other nodes. First x_coord is %.2f",
-            num_points_subnode, main_dataset.x_coords[0]);
+            num_points_node, main_dataset.x_coords[0]);
 }
 
 void mpi_broadcast_centroids()
