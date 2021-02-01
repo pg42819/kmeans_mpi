@@ -1,8 +1,14 @@
 export KMEANS_PROCESSES=10
-export KMEANS_DEBUG=info
+export KMEANS_DEBUG=warn
 export KMEANS_IN=jutland_500.csv
 export KMEANS_TEST=jutland_500_clustered_knime.csv
 export KMEANS_CLUSTERS=22
 export KMEANS_MAX_ITERATIONS=200
 export KMEANS_MAX_POINTS=1000
 export KMEANS_PROG_NUM=1
+export MPI_EXTRAS=""
+#export MPI_EXTRAS="--map-by ppr:1:core"
+#export MPI_EXTRAS="--map-by node"
+#export MPI_EXTRAS="--map-by ppr:1:socket"
+export MPI_EXTRAS="${MPI_EXTRAS} --report-bindings"
+export MPI_EXTRAS="${MPI_EXTRAS} -mca btl self,sm,tcp"

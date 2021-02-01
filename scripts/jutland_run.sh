@@ -36,28 +36,47 @@ multirun() {
   # simple run first
   local program=${kmeans_simple}
   local full_label="${label}_simple"
-#  singlerun
+  local runner=""
+  singlerun
 
   for ((prognum=min_prog; prognum<=max_prog; prognum++)) do
     progname="${prog_base}${prognum}"
     program=${bin_dir}/${progname}
-    for ((t=min_threads; t<=max_threads; t+=thread_step)) do
+    for ((t=min_threads; t<=max_threads; t=t+t)) do
+#    for ((t=min_threads; t<=max_threads; t+=thread_step)) do
       # always start at 1 then jump evenly
       if [ "$t" -eq "0" ];then
         threads=1
       else
         threads=$t
       fi
-      local full_label="${label}__${progname}__n_$threads"
-      echo "RUNNING $full_label"
+      echo "Threads loop with ${threads} threads"
+      local sublabel="${label}__${progname}__n_$threads"
+      local map_by="node"
+      local full_label="${sublabel}_c_s,0,0"
+      runner="mpirun -np ${threads} ${mpi_base_args} --map-by ${map_by}"
       singlerun
+      for c in 4 8; do
+          echo "Cores loop with ${c} cores"
+          local map_by="ppr:${c}:core"
+          full_label="${sublabel}_c_s,$c,0"
+          runner="mpirun -np ${threads} ${mpi_base_args} --map-by ${map_by}"
+          singlerun
+      done
+      for s in 1 2 4 8; do
+          echo "Sockets loop with ${s} sockets"
+          local map_by="ppr:${s}:socket"
+          full_label="${sublabel}_c_s,0,$s"
+          runner="mpirun -np ${threads} ${mpi_base_args} --map-by ${map_by}"
+          singlerun
+      done
     done
   done
 }
 
 singlerun() {
     echo "RUNNING $full_label"
-    command="mpirun -n ${threads} ${program} --${debug_level} -f ${indata} ${out_arg} \
+    command="${runner} ${program} --${debug_level} -f ${indata} ${out_arg} \
            -m ${metrics_file} ${test_args} -k ${num_clusters} -n ${max_points} \
             -i ${max_iterations} -l ${full_label}"
     echo "About to: ${command}"
@@ -66,6 +85,7 @@ singlerun() {
     fi
     if [ -z ${KMEANS_RUN_NOOP+x} ]; then
       ${command}
+    echo "Finished: ${command}"
     else
       echo "DRY RUN. Not doing anything"
     fi
@@ -77,7 +97,7 @@ singlerun() {
 
 askcontinue() {
   local question=${1:-"Do you want to continue?"}
-	read -p "$question (waiting 5s then defaulting to YES)? " -n 1 -r -t 5
+	read -p "$question (waiting a few seconds then defaulting to YES)? " -n 1 -r -t 10
 	echo    # (optional) move to a new line
 	# if no reply (timeout) or yY then yes, else leave it false
 	if [[ -z "$REPLY" || $REPLY =~ ^[Yy]$ ]];then
@@ -89,6 +109,7 @@ askcontinue() {
 run_jutland() {
   size=$1
   max_points=$2
+
   max_iterations=200
 
   in="jutland_${size}.csv"
@@ -97,7 +118,7 @@ run_jutland() {
   test="jutland_${size}_clustered_knime.csv"
   # Metrics go in same file to build a full result set
 
-  min_threads=${KMEANS_PROCESSES_MIN:-0}
+  min_threads=${KMEANS_PROCESSES_MIN:-1}
   max_threads=${KMEANS_PROCESSES_MAX:-200}
   thread_step=${KMEANS_PROCESSES_STEP:-20}
 
@@ -113,6 +134,7 @@ num_clusters=${KMEANS_CLUSTERS:-3}
 max_iterations=${KMEANS_MAX_ITERATIONS:-20}
 prog_base=${KMEANS_PROG_BASE:-kmeans_mpi}
 report_name=${KMEANS_REPORT:-jutland_metrics.csv}
+mpi_base_args="-mca btl self,sm,tcp"
 
 if [ -z ${KMEANS_RUN_INTERACTIVE+x} ]; then
   interactive=false
@@ -133,10 +155,13 @@ if [ -f "${metrics_file}" ]; then
 fi
 
 
+# For sockets use 1,2,4,8
+# for cores use 8, 16
+
 if [ -z ${KMEANS_JUTLAND_SIZE+x} ]; then
   run_jutland 50 100
-  #run_jutland 500 1000
-  #run_jutland 400k 1000000
+  run_jutland 500 1000
+  run_jutland 400k 1000000
 else
   run_jutland ${KMEANS_JUTLAND_SIZE} ${KMEANS_MAX_POINTS}
 fi

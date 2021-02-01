@@ -15,7 +15,7 @@ extern struct kmeans_config *kmeans_config;
 
 struct kmeans_config *new_kmeans_config()
 {
-    struct kmeans_config *new_config = malloc(sizeof(struct kmeans_config));
+    struct kmeans_config *new_config = (struct kmeans_config *)malloc(sizeof(struct kmeans_config));
     new_config->in_file = NULL;
     new_config->out_file = NULL;
     new_config->test_file = NULL;
@@ -33,7 +33,7 @@ struct kmeans_config *new_kmeans_config()
  */
 struct kmeans_metrics *new_kmeans_metrics(struct kmeans_config *config)
 {
-    struct kmeans_metrics *new_metrics = malloc(sizeof(struct kmeans_metrics));
+    struct kmeans_metrics *new_metrics = (struct kmeans_metrics *)malloc(sizeof(struct kmeans_metrics));
     new_metrics->label = config->label;
     new_metrics->max_iterations = config->max_iterations;
     new_metrics->num_clusters = config->num_clusters;
@@ -47,7 +47,7 @@ struct kmeans_metrics *new_kmeans_metrics(struct kmeans_config *config)
  */
 struct kmeans_timing *new_kmeans_timing()
 {
-    struct kmeans_timing *new_timing = malloc(sizeof(struct kmeans_timing));
+    struct kmeans_timing *new_timing = (struct kmeans_timing *)malloc(sizeof(struct kmeans_timing));
     new_timing->main_start_time = 0;
     new_timing->main_stop_time = 0;
     new_timing->iteration_start = 0;

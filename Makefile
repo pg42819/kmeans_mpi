@@ -1,7 +1,7 @@
 UNAME_S := $(shell uname -s)
 
-#COMPILER := gcc
-COMPILER := intel
+COMPILER := gcc
+#COMPILER := intel
 #COMPILER := cuda
 OMP := no
 VEC := no
@@ -16,7 +16,7 @@ OMP_INC=
 OMP_LIB=
 MPI_LIB=
 MPI_INC=
-OPTIMIZATION := -O1
+OPTIMIZATION := -O3
 
 SRC=src/
 EXP=experimental/
@@ -77,7 +77,10 @@ ifeq ($(UNAME_S),Linux)
 		# OPT: CXXFLAGS= $(OPTIMIZATION) -std=c99 -g -fopenmp $(INCLUDES) $(DEBUG_FLAGS)
 		# NOOPT CXXFLAGS= -std=c99 -g -fopenmp $(INCLUDES) $(DEBUG_FLAGS)
 		OMP_FLAGS=-fopenmp $(OMP_EXTRA)
-		CXXFLAGS=$(OPTIMIZATION) -std=c99 -g $(DEBUG_FLAGS)
+		# -lm needed for sqrt on gcc
+		CXXFLAGS=$(OPTIMIZATION) -std=c99 -g $(DEBUG_FLAGS) $(OMP_FLAGS) -lm
+		# MPI requires "module load gnu/openmpi_eth/1.8.4"
+		MPICC=mpicc
 	endif
 endif
 ifeq ($(UNAME_S),Darwin)
@@ -95,7 +98,7 @@ endif
 PROGS=$(BIN)kmeans
 
 .PHONY: all
-all: $(BIN) kmeans_simple
+all: $(BIN) kmeans_simple kmeans_mpi1
 
 kmeans_simple:
 	$(CXX) $(CXXFLAGS) -o $(BIN)kmeans_simple $(SRC)kmeans.c \

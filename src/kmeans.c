@@ -3,11 +3,6 @@
 #include "kmeans_support.h"
 #include "kmeans_impl.h"
 #include "log.h"
-#ifdef __APPLE__
-#include "/opt/openmpi/include/mpi.h"
-#else
-#include <mpi.h>
-#endif
 
 static char* headers[3];
 static int dimensions;

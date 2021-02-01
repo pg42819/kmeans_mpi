@@ -142,12 +142,6 @@ double point_distance(struct pointset *pointset1, int index1, struct pointset *p
 {
     check_bounds(pointset1, index1);
     check_bounds(pointset2, index2);
-//    double x2 = pointset2->x_coords[index2];
-//    double y2 = pointset2->y_coords[index2];
-//    double x1 = pointset1->x_coords[index1];
-//    double y1 = pointset1->y_coords[index1];
-//    double dist = euclidean_distance(x2, y2, x1, y1);
-//    return dist;
     return euclidean_distance(pointset2->x_coords[index2], pointset2->y_coords[index2],
                               pointset1->x_coords[index1], pointset1->y_coords[index1]);
 }
@@ -163,47 +157,7 @@ bool same_cluster(struct pointset *pointset1, struct pointset *pointset2, int in
 }
 
 /**
- * Convert the omp schedule kind to an int for easy graphing and
- * handle the OMP 4.5 introduction of monotonic for static by returning zero.
- *
- * @param chunk_size pointer to an int to hold the chunk size
- * @return an integer representing the OpenMP schedule kind:
- *      0 = monotonic (OMP 4.5+)
- *      1 = static
- *      2 = dynamic (default)
- *      3 = guided
- *      4 = auto
- */
-int omp_schedule_kind(int *chunk_size)
-{
-    int chunk_s = -1; // create our own in case chunk_size is a null pointer
-    enum omp_sched_t kind = omp_sched_static;
-    omp_get_schedule(&kind, &chunk_s);
-
-//    printf("kind   : %d\n", kind);
-//    printf("omp_sched_static    : %d\n", omp_sched_static);
-//    printf("omp_sched_dynamic   : %d\n", omp_sched_dynamic);
-//    printf("omp_sched_guided    : %d\n", omp_sched_guided);
-//    printf("omp_sched_auto      : %d\n", omp_sched_auto);
-//    printf("omp_sched_monotonic : %d\n", omp_sched_monotonic);
-    // allow for chunk_size null if we don't care about it otherwise assign_clusters it
-    if (chunk_size != NULL) {
-        *chunk_size = chunk_s;
-    }
-
-    if (kind < -1) {
-        // on mac os the OMP_SCHEDULE variable value "static" results in -2147483647 (-MAX_INT)
-        // which is probably meant to match the omp_sched_monotonic enum but misses by 1
-        // But we switch it for 1 anyway to simulate static on the Linux SEARCH server which is
-        // where this program is finally run anyway (the Mac OS run is just for dev/debug)
-        // Note that monotonic was introduced in OpenMP 4.5
-        return 1;
-    }
-    return (int)kind;
-}
-
-/**
- * Calculate the SQAURE of euclidean distance between two points.
+ * Calculate the SQUARE of euclidean distance between two points.
  *
  * That is, the sum of the squares of the distances between coordinates
  *
@@ -238,7 +192,7 @@ const char *p_to_s(struct pointset *dataset, int index)
 {
     // TODO this eats a lot of memory when in a big loop - consider passing in a string to reuse
     // but for now we keep string printing OUT of timed sections so it won't have much affect
-    char *result = malloc(50 * sizeof(char)); // big enough for 2 points
+    char *result = (char *)malloc(50 * sizeof(char)); // big enough for 2 points
     sprintf(result, "%.7f,%.7f", dataset->x_coords[index], dataset->y_coords[index]);
     return result;
 }

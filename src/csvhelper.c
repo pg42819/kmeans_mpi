@@ -217,7 +217,7 @@ int csvheaders(FILE *csv_file, char **headers) {
         if ((line = csvgetline(csv_file)) != NULL) {
             for (int i = 0; i < csvnfield(); i++) {
                 char *field = csvfield(i);
-                headers[i] = malloc(strlen(field) + 1);
+                headers[i] = (char *)malloc(strlen(field) + 1);
                 strcpy(headers[i], field);
             }
         }

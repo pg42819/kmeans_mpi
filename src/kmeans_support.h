@@ -54,8 +54,5 @@ extern char* valid_file(char opt, char *filename);
 extern int valid_count(char opt, char *arg);
 
 extern int test_results(char *test_file_name, struct pointset *dataset);
-// help with debugging OMP
-extern int omp_schedule_kind(int *chunk_size);
-extern void omp_debug(char *msg);
 
 #endif
